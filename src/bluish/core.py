@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from functools import wraps
-from typing import Any, Callable, Dict, Generator
+from typing import Any, Callable, Dict
 
 from bluish.log import error, fatal, info, warn
 from bluish.utils import ensure_list
@@ -88,8 +88,11 @@ CMDEOF
         if working_dir:
             remote_command = f"cd {working_dir} && {remote_command}"
 
+        final_command: str
         if self._host:
             final_command = f'ssh {self._host} -- "{remote_command}"'
+        else:
+            final_command = remote_command
 
         if self.echo_output:
             stdout: str = ""
@@ -152,20 +155,29 @@ class Context:
 class PipeContext(Context):
     def __init__(self, conn: Connection, definition: dict[str, Any]):
         super().__init__(conn, definition)
-        self.jobs = ensure_list(definition["jobs"])
 
-    def get_jobs(self) -> Generator[Any, "JobContext", Any]:
-        if not self.jobs:
+    def dispatch(self) -> None:
+        if "working_dir" in self.definition:
+            self.vars["working_dir"] = self.definition["working_dir"]
+        else:
+            self.vars["working_dir"] = self.conn.run("pwd").stdout.strip()
+
+        jobs = ensure_list(self.definition["jobs"])
+        if not jobs:
             return
-        for job in self.jobs:
-            yield JobContext(self, job)
+
+        for job in jobs:
+            ctx = JobContext(self, job)
+            ctx.dispatch()
 
 
 class JobContext(Context):
     def __init__(self, pipe: PipeContext, job: dict[str, Any]):
         self.pipe = pipe
-        self.name = tuple(job.keys())[0]
-        self.job_definition = job[self.name]
+        self.id = tuple(job.keys())[0]
+        self.job_definition = job[self.id]
+        if isinstance(self.job_definition, list):
+            self.job_definition = self.job_definition[0]
         self.steps = ensure_list(self.job_definition["steps"])
         self.can_fail = self.job_definition.get("can_fail", False)
         self._var_regex = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
@@ -212,6 +224,42 @@ class JobContext(Context):
     def increment_step(self) -> bool:
         self._current_step += 1
         return self.current_step is not None
+
+    def dispatch(self) -> None:
+        if self.current_step is None:
+            return
+
+        while self.current_step is not None:
+            step = self.current_step
+
+            if "name" in step:
+                info(f"Processing step: {step['name']}")
+
+            execute_action: bool = True
+
+            if "if" in step:
+                condition = step["if"]
+                info(f"Testing {condition}")
+                if not isinstance(condition, str):
+                    fatal("Condition must be a string")
+
+                check_cmd = condition.strip()
+                check_result = self.run(check_cmd).stdout.strip()
+                if not check_result.endswith("true") and not check_result.endswith("1"):
+                    info("Skipping step")
+                    execute_action = False
+
+            if execute_action:
+                fqn = step.get("uses", "command-runner")
+                fn = REGISTERED_ACTIONS.get(fqn)
+                if fn:
+                    info(f"Running action: {fqn}")
+                    result = fn(self)
+                else:
+                    fatal(f"Unknown action: {fqn}")
+                self.save_output(result)
+
+            self.increment_step()
 
     def run(self, command: str, fail: bool | None = None) -> ProcessResult:
         assert self.current_step is not None
@@ -336,13 +384,18 @@ class JobContext(Context):
     def save_output(self, result: ProcessResult) -> None:
         assert self.current_step is not None
 
+        output = result.stdout.strip()
+
         if "output_alias" in self.current_step:
             key = self.current_step["output_alias"]
-            self.set_var(key, result.stdout.strip())
+            self.set_var(key, output)
 
         if "id" in self.current_step:
             key = f"steps.{self.current_step['id']}.output"
-            self.set_var(key, result.stdout.strip())
+            self.set_var(key, output)
+
+        key = f"pipe.jobs.{self.id}.output"
+        self.set_var(key, output)
 
 
 class RequiredParamError(Exception):
