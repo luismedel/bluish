@@ -8,7 +8,9 @@ def ensure_dict(value: Any) -> dict[str, Any] | None:
         result = {}
         for d in value:
             if len(d) > 1:
-                raise ValueError("Expected a list of dictionaries with one key-value pair")
+                raise ValueError(
+                    "Expected a list of dictionaries with one key-value pair"
+                )
             result.update(d)
         return result
     elif isinstance(value, dict):

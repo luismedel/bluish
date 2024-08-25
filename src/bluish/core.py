@@ -370,10 +370,8 @@ class JobContext(Context):
         if not inputs:
             return {}
 
-        return {
-            k: self._expand(v) for k, v in inputs.items()
-        }
- 
+        return {k: self._expand(v) for k, v in inputs.items()}
+
     def save_output(self, result: ProcessResult) -> None:
         assert self.current_step is not None
 
@@ -391,9 +389,9 @@ class JobContext(Context):
         self.set_var(key, output)
 
 
-class RequiredParamError(Exception):
+class RequiredInputError(Exception):
     def __init__(self, param: str):
-        super().__init__(f"Missing required parameter: {param}")
+        super().__init__(f"Missing required input parameter: {param}")
 
 
 class RequiredAttributeError(Exception):
@@ -420,7 +418,7 @@ def action(
                     elif attr in step:
                         continue
                     else:
-                        raise RequiredParamError(attr)
+                        raise RequiredAttributeError(attr)
 
             if required_inputs:
                 ctx_inputs = ctx.get_inputs()
@@ -430,7 +428,7 @@ def action(
                     elif param in ctx_inputs:
                         continue
                     else:
-                        raise RequiredParamError(param)
+                        raise RequiredInputError(param)
 
             return func(ctx)
 
