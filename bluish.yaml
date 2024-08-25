@@ -5,7 +5,7 @@ var:
 
 jobs:
   lint:
-    name: Lint code
+    name: Runs ruff and mypy
     steps:
       - run: |
           ruff version
@@ -15,6 +15,7 @@ jobs:
           mypy --ignore-missing-imports --python-version=${{ pipe.python_version }} src/ test/
 
   lint-fix:
+    name: Reformats the code using ruff
     steps:
       - run: |
           ruff version
@@ -23,13 +24,13 @@ jobs:
           echo ""
 
   test:
-    name: Runs pytest on test/
-
+    name: Runs pytest
     steps:
-      - run: pytest
+      - run: |
+          pytest
   
   update-metadata:
-    name: Update the info present in the pyproject.toml file
+    name: Updates the info present in the pyproject.toml file
     steps:
       - uses: expand-template
         with:
