@@ -1,4 +1,5 @@
 import random
+
 from bluish.core import JobContext, ProcessResult, action
 
 
@@ -25,8 +26,10 @@ def expand_template(ctx: JobContext) -> ProcessResult:
     output_file = inputs.get("output_file")
     if output_file:
         heredocstr = f"EOF_{random.randint(1, 1000)}"
-        ctx.run(f"""cat <<{heredocstr} > {output_file}
+        ctx.run(
+            f"""cat <<{heredocstr} > {output_file}
 {expanded_content}
 {heredocstr}
-""")
+"""
+        )
     return ProcessResult(expanded_content)

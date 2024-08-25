@@ -1,13 +1,11 @@
-import io
 import logging
 import os
 import random
 import re
-import selectors
 import subprocess
 import sys
 from functools import wraps
-from typing import Any, Callable, Dict, TextIO
+from typing import Any, Callable, Dict
 
 from bluish.utils import decorate_for_log, ensure_dict
 
@@ -89,10 +87,10 @@ class Connection:
             universal_newlines=True,
             text=True,
         )
-        
+
         assert process.stdout is not None
         assert process.stderr is not None
-        
+
         stdout: str = ""
         stderr: str = ""
 

@@ -74,7 +74,6 @@ def list_jobs(pipe: PipeContext) -> None:
         names.append(desc.get("name", ""))
 
     len_id = max([len(id) for id in ids])
-    len_name = max([len(name) for name in names])
 
     print("List of available jobs:")
     print(f"{'ID':<{len_id}}  NAME")
