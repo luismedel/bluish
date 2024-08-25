@@ -17,16 +17,21 @@ from bluish.log import fatal
 def main(pipeline_file: str, host: str) -> None:
     try:
         conn = Connection(host)
-        with open(pipeline_file, "r") as yaml_file:
-            yaml_contents = yaml_file.read()
+        if pipeline_file:
+            with open(pipeline_file, "r") as yaml_file:
+                yaml_contents = yaml_file.read()
 
         yaml_contents = """
-working_dir: /tmp
+var:
+    - HELLO: "Hello"
+    - WORLD: "World!"
+    - SMILEY: ":-)"
 
 jobs:
-  cwd:
-    - steps:
-        - run: pwd
+    expansion:
+        name: Test expansion
+        steps:
+            - run: echo '${{ pipe.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
 """
         pipe = PipeContext(conn, yaml.safe_load(yaml_contents))
         pipe.dispatch()

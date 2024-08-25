@@ -1,6 +1,5 @@
 from bluish.core import JobContext, ProcessResult, action
 from bluish.log import fatal, info
-from bluish.utils import ensure_list
 
 
 def _build_list_opt(opt: str, items: list[str] | None) -> str:
@@ -57,9 +56,9 @@ def docker_run(ctx: JobContext) -> ProcessResult:
         )
     else:
         options = "--detach"
-        options += _build_list_opt("-p", ensure_list(inputs.get("ports")))
-        options += _build_list_opt("-v", ensure_list(inputs.get("volumes")))
-        options += _build_list_opt("-e", ensure_list(inputs.get("env")))
+        options += _build_list_opt("-p", inputs.get("ports"))
+        options += _build_list_opt("-v", inputs.get("volumes"))
+        options += _build_list_opt("-e", inputs.get("env"))
         options += _build_list_opt("--env-file", inputs.get("env_file"))
         options += _build_flag("--rm", inputs.get("remove_on_exit"))
 

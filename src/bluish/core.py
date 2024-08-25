@@ -5,7 +5,7 @@ from functools import wraps
 from typing import Any, Callable, Dict
 
 from bluish.log import error, fatal, info, warn
-from bluish.utils import ensure_list
+from bluish.utils import ensure_dict
 
 REGISTERED_ACTIONS: Dict[str, Callable[["JobContext"], "ProcessResult"]] = {}
 
@@ -15,12 +15,6 @@ SHELLS = {
     "sh": "sh",
     "python": "python3",
 }
-
-
-def get_kv(value: dict[str, Any]) -> tuple[str, Any]:
-    if len(value.keys()) > 1:
-        raise ValueError(f"Invalid value {value}")
-    return next(iter(value.items()))
 
 
 class VariableExpandError(Exception):
@@ -147,9 +141,16 @@ class Context:
         self.definition = definition
 
         self.vars: dict[str, Any] = {}
-        for d in definition.get("vars", []):
-            k, v = get_kv(d)
-            self.vars[k] = v
+        vars = ensure_dict(definition.get("var"))
+        if vars:
+            for name, value in vars.items():
+                self.set_var(name, value)
+
+    def has_var(self, name: str) -> bool:
+        return name in self.vars
+
+    def set_var(self, name: str, value: Any) -> None:
+        self.vars[name] = value
 
 
 class PipeContext(Context):
@@ -162,23 +163,18 @@ class PipeContext(Context):
         else:
             self.vars["working_dir"] = self.conn.run("pwd").stdout.strip()
 
-        jobs = ensure_list(self.definition["jobs"])
-        if not jobs:
-            return
-
-        for job in jobs:
-            ctx = JobContext(self, job)
+        for id, details in self.definition["jobs"].items():
+            ctx = JobContext(self, id, details)
             ctx.dispatch()
 
 
 class JobContext(Context):
-    def __init__(self, pipe: PipeContext, job: dict[str, Any]):
+    def __init__(self, pipe: PipeContext, id: str, definition: dict[str, Any]):
         self.pipe = pipe
-        self.id = tuple(job.keys())[0]
-        self.job_definition = job[self.id]
-        if isinstance(self.job_definition, list):
-            self.job_definition = self.job_definition[0]
-        self.steps = ensure_list(self.job_definition["steps"])
+        self.id = id
+        self.job_definition = definition
+        assert self.job_definition is not None
+        self.steps = self.job_definition["steps"]
         self.can_fail = self.job_definition.get("can_fail", False)
         self._var_regex = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
         self._current_step = 0
@@ -345,9 +341,9 @@ class JobContext(Context):
             else:
                 self.vars[name] = value
         else:
-            if name in self.vars:
+            if self.has_var(name):
                 self.vars[name] = value
-            elif name in self.pipe.vars:
+            elif self.pipe.has_var(name):
                 self.pipe.vars[name] = value
             else:
                 self.vars[name] = value
@@ -370,17 +366,14 @@ class JobContext(Context):
     def get_inputs(self) -> dict[str, Any]:
         assert self.current_step is not None
 
-        inputs = ensure_list(self.current_step.get("with"))
+        inputs = ensure_dict(self.current_step.get("with"))
         if not inputs:
             return {}
 
-        result = {}
-        for input in inputs:
-            for k, v in input.items():
-                result[k] = self._expand(v)
-
-        return result
-
+        return {
+            k: self._expand(v) for k, v in inputs.items()
+        }
+ 
     def save_output(self, result: ProcessResult) -> None:
         assert self.current_step is not None
 
