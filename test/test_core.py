@@ -38,7 +38,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.job1.output"] == "This is Job 1"
     assert pipe.vars["jobs.job2.output"] == "This is Job 2, step 2"
 
@@ -53,7 +53,7 @@ jobs:
         steps:
             - run: pwd
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.working_directory.output"] == "/tmp"
 
 
@@ -65,7 +65,7 @@ jobs:
         steps:
             - run: echo 'Hello, World!'
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.hello.output"] == "Hello, World!"
 
 
@@ -77,7 +77,7 @@ jobs:
             - name: 'This step lacks a run property'
 """)
     try:
-        pipe.dispatch()
+        pipe.dispatch_all()
         assert False
     except RequiredAttributeError:
         assert True
@@ -96,7 +96,7 @@ jobs:
                   - input: "Hello, ${{{{ pipe.WORLD }}}}"
 """)
     try:
-        pipe.dispatch()
+        pipe.dispatch_all()
         assert False
     except RequiredInputError:
         assert True
@@ -111,7 +111,7 @@ jobs:
         steps:
             - run: pwd
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.cwd.output"] == "/tmp"
 
 
@@ -128,7 +128,7 @@ jobs:
         steps:
             - run: echo '${{ pipe.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.expansion.output"] == "Hello World! :-)"
 
 
@@ -147,7 +147,7 @@ jobs:
         var:
             - SMILEY: ":-DDDD"
 """)
-    pipe.dispatch()
+    pipe.dispatch_all()
     assert pipe.vars["jobs.override.output"] == "Hello World! :-DDDD"
 
 
@@ -166,6 +166,6 @@ jobs:
                   input: "Hello, ${{{{ pipe.WORLD }}}}"
                   output_file: {temp_file.name}
     """)
-        pipe.dispatch()
+        pipe.dispatch_all()
         assert pipe.vars["jobs.expand_template.output"] == "Hello, World!"
         assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"

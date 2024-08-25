@@ -1,21 +1,32 @@
+import io
+import logging
 import os
 import random
 import re
+import selectors
 import subprocess
+import sys
 from functools import wraps
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, TextIO
 
-from bluish.log import error, fatal, info, warn
-from bluish.utils import ensure_dict
+from bluish.utils import decorate_for_log, ensure_dict
 
 REGISTERED_ACTIONS: Dict[str, Callable[["JobContext"], "ProcessResult"]] = {}
 
 
 SHELLS = {
-    "bash": "bash -eo pipefail",
-    "sh": "sh",
+    "bash": "bash -euo pipefail",
+    "sh": "sh -eu",
     "python": "python3",
 }
+
+
+DEFAULT_SHELL = "bash"
+
+
+def fatal(message: str, exit_code: int = 1) -> None:
+    logging.critical(message)
+    exit(exit_code)
 
 
 class VariableExpandError(Exception):
@@ -29,7 +40,9 @@ class ProcessResult(subprocess.CompletedProcess[str]):
             self.stderr = ""
             self.returncode = 0
         elif isinstance(data, subprocess.CompletedProcess):
-            self.__dict__.update(data.__dict__)
+            self.stdout = data.stdout or ""
+            self.stderr = data.stderr or ""
+            self.returncode = data.returncode
         else:
             raise ValueError("Invalid data type")
 
@@ -46,6 +59,7 @@ class Connection:
         self.fail_fast = True
 
     def _escape_command(self, command: str) -> str:
+        return command
         return (
             command.replace("\\", "\\\\")
             .replace("'", "\\'")
@@ -57,23 +71,77 @@ class Connection:
     def _escape_quotes(self, command: str) -> str:
         return command.replace('"', '\\"')
 
+    def capture_subprocess_output(
+        self, command: str, echo_output: bool
+    ) -> subprocess.CompletedProcess[str]:
+        # Adapted from https://gist.github.com/tonykwok/e341a1413520bbb7cdba216ea7255828
+        # Thanks @tonykwok!
+
+        def handle_event(buffer: io.StringIO, output_stream: TextIO) -> Callable:
+            def handler(stream: io.TextIOWrapper, _):
+                line = stream.readline()
+                buffer.write(line)
+                if echo_output:
+                    output_stream.write(line)
+
+            return handler
+
+        # shell = True is required for passing a string command instead of a list
+        # bufsize = 1 means output is line buffered
+        # universal_newlines = True is required for line buffering
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            bufsize=1,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+
+        stdout_buffer = io.StringIO()
+        stderr_buffer = io.StringIO()
+
+        selector = selectors.DefaultSelector()
+        selector.register(
+            process.stdout,  # type: ignore
+            selectors.EVENT_READ,
+            handle_event(stdout_buffer, sys.stdout),
+        )
+
+        selector.register(
+            process.stderr,  # type: ignore
+            selectors.EVENT_READ,
+            handle_event(stderr_buffer, sys.stderr),
+        )
+
+        while process.poll() is None:
+            events = selector.select()
+            for key, mask in events:
+                callback = key.data
+                callback(key.fileobj, mask)
+
+        return_code = process.wait()
+        selector.close()
+
+        stdout = stdout_buffer.getvalue().strip()
+        stdout_buffer.close()
+
+        stderr = stderr_buffer.getvalue().strip()
+        stderr_buffer.close()
+
+        return subprocess.CompletedProcess(command, return_code, stdout, stderr)
+
     def run(self, command: str, **kwargs: Any) -> ProcessResult:
         if self.echo_commands:
-            info(f"@{self._host} $ {command}")
-        fail = kwargs.pop("fail", self.fail_fast)
+            if self._host:
+                logging.info(f"At @{self._host}")
+            logging.info(decorate_for_log(command))
 
-        remote_command: str = ""
-
-        escape_command = kwargs.pop("escape_commands", False)
-        if escape_command:
-            command = self._escape_command(command)
-        else:
-            command = self._escape_quotes(command)
-
-        heredocstr = f"CMDEOF_{random.randint(1, 1000)}"
+        remote_command: str
 
         interpreter = kwargs.pop("interpreter", None)
         if interpreter:
+            heredocstr = f"EOF_{random.randint(1, 1000)}"
             remote_command = f"""cat <<{heredocstr} | {interpreter}
 {command}
 {heredocstr}
@@ -83,7 +151,7 @@ class Connection:
 
         working_dir = kwargs.pop("working_dir", None)
         if working_dir:
-            remote_command = f"cd {working_dir} && {remote_command}"
+            remote_command = f'cd "{working_dir}" && {remote_command}'
 
         final_command: str
         if self._host:
@@ -91,49 +159,16 @@ class Connection:
         else:
             final_command = remote_command
 
-        if self.echo_output:
-            stdout: str = ""
-            stderr: str = ""
-            process = subprocess.Popen(
-                final_command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                **kwargs,
-            )
+        result = self.capture_subprocess_output(final_command, self.echo_output)
 
-            assert process.stdout is not None
-
-            while True:
-                line = process.stdout.readline()
-                if not line:
-                    break
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8")
-                line = line.rstrip()
-                stdout += line
-                info(line)
-            process.wait()
-            if process.stderr:
-                stderr = process.stderr.read().decode("utf-8")
-            result = subprocess.CompletedProcess(
-                process.args, process.returncode, stdout, stderr
-            )
-        else:
-            result = subprocess.run(
-                final_command,
-                shell=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                **kwargs,
-            )
-
+        fail = kwargs.pop("fail", self.fail_fast)
         if fail:
-            if self.echo_output and result.stderr.strip():
-                error(result.stderr.strip())
-            result.check_returncode()
+            if self.echo_output and result.stderr:
+                logging.error(result.stderr)
+            if result.returncode != 0:
+                fatal(f"Command failed with exit status {result.returncode}")
         elif result.returncode != 0:
-            warn(f"Command failed with status {result.returncode}")
+            logging.warn(f"Command failed with exit status {result.returncode}")
         return ProcessResult(result)
 
 
@@ -159,15 +194,24 @@ class PipeContext(Context):
     def __init__(self, conn: Connection, definition: dict[str, Any]):
         super().__init__(conn, definition)
 
-    def dispatch(self) -> None:
-        if "working_dir" in self.definition:
-            self.vars["working_dir"] = self.definition["working_dir"]
-        else:
-            self.vars["working_dir"] = self.conn.run("pwd").stdout.strip()
+    def get_jobs(self) -> dict[str, Any]:
+        return self.definition["jobs"]
 
-        for id, details in self.definition["jobs"].items():
-            ctx = JobContext(self, id, details)
-            ctx.dispatch()
+    def dispatch_all(self) -> None:
+        for id in self.get_jobs().keys():
+            self.dispatch_job(id)
+
+    def dispatch_job(self, id: str) -> None:
+        # Initialize builtin vars if not already set
+        if "working_dir" not in self.vars:
+            wd = (
+                self.definition.get("working_dir")
+                or self.conn.run("pwd").stdout.strip()
+            )
+            self.vars["working_dir"] = wd
+
+        ctx = JobContext(self, id, self.definition["jobs"][id])
+        ctx.dispatch()
 
 
 class JobContext(Context):
@@ -231,27 +275,27 @@ class JobContext(Context):
             step = self.current_step
 
             if "name" in step:
-                info(f"Processing step: {step['name']}")
+                logging.info(f"Processing step: {step['name']}")
 
             execute_action: bool = True
 
             if "if" in step:
                 condition = step["if"]
-                info(f"Testing {condition}")
+                logging.info(f"Testing {condition}")
                 if not isinstance(condition, str):
                     fatal("Condition must be a string")
 
                 check_cmd = condition.strip()
                 check_result = self.run(check_cmd).stdout.strip()
                 if not check_result.endswith("true") and not check_result.endswith("1"):
-                    info("Skipping step")
+                    logging.info("Skipping step")
                     execute_action = False
 
             if execute_action:
                 fqn = step.get("uses", "command-runner")
                 fn = REGISTERED_ACTIONS.get(fqn)
                 if fn:
-                    info(f"Running action: {fqn}")
+                    logging.info(f"Running action: {fqn}")
                     result = fn(self)
                 else:
                     fatal(f"Unknown action: {fqn}")
@@ -263,20 +307,9 @@ class JobContext(Context):
         assert self.current_step is not None
 
         command = self._expand(command.strip())
-        lines = [s for s in command.splitlines() if len(s.strip()) > 0]
-
-        escape_commands = self.current_step.get("escape_commands", False)
-        working_dir = self.get_var("pipe.working_dir")
-        if False and working_dir:
-            prepend_cd = True
-            for i in range(len(lines)):
-                line = lines[i]
-                if prepend_cd:
-                    line = f"cd {working_dir} && {line}"
-                prepend_cd = True
-                if line.endswith("\\"):
-                    prepend_cd = False
-                lines[i] = line
+        lines = command.splitlines()
+        while lines and lines[-1].strip() == "":
+            lines.pop()
 
         command = "\n".join(lines)
 
@@ -285,15 +318,16 @@ class JobContext(Context):
         else:
             can_fail = fail
 
-        shell = self.current_step.get("shell")
-        interpreter = SHELLS.get(shell, shell) if shell else None
+        shell = self.current_step.get("shell", DEFAULT_SHELL)
+        interpreter = SHELLS.get(shell, shell)
+
+        working_dir = self.get_var("pipe.working_dir")
 
         return self.pipe.conn.run(
             command,
             fail=not can_fail,
             interpreter=interpreter,
             working_dir=working_dir,
-            escape_commands=escape_commands,
         )
 
     def get_var(self, name: str, raw: bool = False) -> str:
@@ -318,7 +352,7 @@ class JobContext(Context):
             else:
                 if name in self.vars:
                     return expand(self.vars.get(name))
-                warn(f"Variable {prefix}.{name} not found.")
+                logging.warn(f"Variable {prefix}.{name} not found.")
                 return ""
         else:
             _with = self.current_step.get("with", {})
@@ -329,7 +363,7 @@ class JobContext(Context):
             elif name in self.pipe.vars:
                 return expand(self.pipe.vars[name])
             else:
-                warn(f"Variable {name} not found.")
+                logging.warn(f"Variable {name} not found.")
                 return ""
 
     def set_var(self, name: str, value: str) -> None:
@@ -440,9 +474,13 @@ def action(
     return inner
 
 
+def init_logging(level_name: str) -> None:
+    log_level = getattr(logging, level_name.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, format="[%(levelname).1s] %(message)s")
+
+
 def init_commands() -> None:
     from bluish.docker_commands import docker_build, docker_create_network, docker_run  # noqa
     from bluish.generic_commands import expand_template, generic_run  # noqa
-    from bluish.git_commands import git_get_latest_release  # noqa
 
     pass

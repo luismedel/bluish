@@ -1,5 +1,6 @@
-from bluish.core import JobContext, ProcessResult, action
-from bluish.log import fatal, info
+import logging
+
+from bluish.core import JobContext, ProcessResult, action, fatal
 
 
 def _build_list_opt(opt: str, items: list[str] | None) -> str:
@@ -50,10 +51,14 @@ def docker_run(ctx: JobContext) -> ProcessResult:
         f"docker ps -f name={name} --quiet", fail=False
     ).stdout.strip()
     if container_pid:
-        log_fn = fatal if fail_if_running else info
-        log_fn(
-            f"Container with image {image} is already running with id {container_pid}."
-        )
+        if fail_if_running:
+            fatal(
+                f"Container with name {name} is already running with id {container_pid}."
+            )
+        else:
+            logging.info(
+                f"Container with name {name} is already running with id {container_pid}."
+            )
     else:
         options = "--detach"
         options += _build_list_opt("-p", inputs.get("ports"))
@@ -82,8 +87,10 @@ def docker_create_network(ctx: JobContext) -> ProcessResult:
         f"docker network ls -f name={name} --quiet", fail=False
     ).stdout.strip()
     if network_id:
-        log_fn = fatal if fail_if_exists else info
-        log_fn(f"Network {name} already exists with id {network_id}.")
+        if fail_if_exists:
+            fatal(f"Network {name} already exists with id {network_id}.")
+        else:
+            logging.info(f"Network {name} already exists with id {network_id}.")
     else:
         options = "--attachable"
         for opt in ["label"]:
@@ -91,6 +98,6 @@ def docker_create_network(ctx: JobContext) -> ProcessResult:
         for flag in ["ingress", "internal"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
         network_id = ctx.run(f"docker network create {options} {name}").stdout.strip()
-        info(f"Network {name} created with id {network_id}.")
+        logging.info(f"Network {name} created with id {network_id}.")
 
     return ProcessResult(network_id)
