@@ -11,3 +11,7 @@ The CI/CD/automation tool for my personal projects.
 ## How to use
 
 TBD.
+
+## License
+
+MIT License (see the LICENSE file).
