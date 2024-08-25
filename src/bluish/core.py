@@ -1,4 +1,5 @@
 import os
+import random
 import re
 import subprocess
 from functools import wraps
@@ -69,11 +70,13 @@ class Connection:
         else:
             command = self._escape_quotes(command)
 
+        heredocstr = f"CMDEOF_{random.randint(1, 1000)}"
+
         interpreter = kwargs.pop("interpreter", None)
         if interpreter:
-            remote_command = f"""cat <<CMDEOF | {interpreter}
+            remote_command = f"""cat <<{heredocstr} | {interpreter}
 {command}
-CMDEOF
+{heredocstr}
 """
         else:
             remote_command = command
