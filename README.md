@@ -1,5 +1,13 @@
-# bluish
+# Bluish
 
-Another CI/CD tool
+The CI/CD/automation tool for my personal projects.
 
-(pending tests, docs and a lot more work)
+## Features
+
+- YAML-based declarative approach (not that I love YAML, but...)
+- Githubactions-esque philosphy, but way simpler
+- Simple as fuck. I only add new actions whenever I need them
+
+## How to use
+
+TBD.
