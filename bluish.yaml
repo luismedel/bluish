@@ -1,5 +1,6 @@
 
 var:
+  bluish_version: "0.0.1"
   python_version: "3.11"
 
 jobs:
@@ -22,8 +23,15 @@ jobs:
           echo ""
 
   test:
-    name: Run tests
-    help: Runs pytest on test/
+    name: Runs pytest on test/
 
     steps:
       - run: pytest
+  
+  update-metadata:
+    name: Update the info present in the pyproject.toml file
+    steps:
+      - uses: expand-template
+        with:
+          input_file: ./pyproject.toml.template
+          output_file: ./pyproject.toml

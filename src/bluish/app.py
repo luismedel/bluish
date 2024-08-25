@@ -68,23 +68,20 @@ def list_jobs(pipe: PipeContext) -> None:
 
     ids = []
     names = []
-    helps = []
 
     for id, desc in available_jobs.items():
         ids.append(id)
         names.append(desc.get("name", ""))
-        helps.append(desc.get("help", ""))
 
     len_id = max([len(id) for id in ids])
     len_name = max([len(name) for name in names])
 
     print("List of available jobs:")
-    print(f"{'ID':<{len_id}}  {'NAME':<{len_name}}  {'HELP'}")
+    print(f"{'ID':<{len_id}}  NAME")
     for i in range(len(ids)):
         id = ids[i]
         name = names[i]
-        help = helps[i]
-        print(f"{id:<{len_id}}  {name:<{len_name}}  {help}")
+        print(f"{id:<{len_id}}  {name}")
 
 
 @main.command("run")

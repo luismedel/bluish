@@ -74,17 +74,8 @@ class Connection:
     def capture_subprocess_output(
         self, command: str, echo_output: bool
     ) -> subprocess.CompletedProcess[str]:
-        # Adapted from https://gist.github.com/tonykwok/e341a1413520bbb7cdba216ea7255828
+        # Got the poll() trick from https://gist.github.com/tonykwok/e341a1413520bbb7cdba216ea7255828
         # Thanks @tonykwok!
-
-        def handle_event(buffer: io.StringIO, output_stream: TextIO) -> Callable:
-            def handler(stream: io.TextIOWrapper, _):
-                line = stream.readline()
-                buffer.write(line)
-                if echo_output:
-                    output_stream.write(line)
-
-            return handler
 
         # shell = True is required for passing a string command instead of a list
         # bufsize = 1 means output is line buffered
@@ -96,38 +87,24 @@ class Connection:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             universal_newlines=True,
+            text=True,
         )
-
-        stdout_buffer = io.StringIO()
-        stderr_buffer = io.StringIO()
-
-        selector = selectors.DefaultSelector()
-        selector.register(
-            process.stdout,  # type: ignore
-            selectors.EVENT_READ,
-            handle_event(stdout_buffer, sys.stdout),
-        )
-
-        selector.register(
-            process.stderr,  # type: ignore
-            selectors.EVENT_READ,
-            handle_event(stderr_buffer, sys.stderr),
-        )
+        
+        assert process.stdout is not None
+        assert process.stderr is not None
+        
+        stdout: str = ""
+        stderr: str = ""
 
         while process.poll() is None:
-            events = selector.select()
-            for key, mask in events:
-                callback = key.data
-                callback(key.fileobj, mask)
+            line = process.stdout.readline()
+            stdout += line
+            if echo_output:
+                sys.stdout.write(line)
 
         return_code = process.wait()
-        selector.close()
-
-        stdout = stdout_buffer.getvalue().strip()
-        stdout_buffer.close()
-
-        stderr = stderr_buffer.getvalue().strip()
-        stderr_buffer.close()
+        stdout = stdout.strip()
+        stderr = process.stderr.read()
 
         return subprocess.CompletedProcess(command, return_code, stdout, stderr)
 
