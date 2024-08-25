@@ -3,7 +3,13 @@ import tempfile
 
 import pytest
 import yaml
-from bluish.core import Connection, PipeContext, RequiredParamError, init_commands
+from bluish.core import (
+    Connection,
+    PipeContext,
+    RequiredAttributeError,
+    RequiredInputError,
+    init_commands,
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -63,18 +69,36 @@ jobs:
     assert pipe.vars["jobs.hello.output"] == "Hello, World!"
 
 
-def test_mandatory_proerties() -> None:
+def test_mandatory_attributes() -> None:
     pipe = create_pipe("""
 jobs:
-    mandatory:
-        name: "Hello, World!"
+    mandatory_attributes:
         steps:
             - name: 'This step lacks a run property'
 """)
     try:
         pipe.dispatch()
         assert False
-    except RequiredParamError:
+    except RequiredAttributeError:
+        assert True
+
+
+def test_mandatory_inputs() -> None:
+    pipe = create_pipe("""
+var:
+    - WORLD: "World!"
+
+jobs:
+    mandatory_inputs:
+        steps:
+            - uses: expand-template
+              with:
+                  - input: "Hello, ${{{{ pipe.WORLD }}}}"
+""")
+    try:
+        pipe.dispatch()
+        assert False
+    except RequiredInputError:
         assert True
 
 
