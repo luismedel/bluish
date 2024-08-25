@@ -120,7 +120,6 @@ CMDEOF
             result = subprocess.run(
                 final_command,
                 shell=True,
-                capture_output=True,
                 text=True,
                 stdout=subprocess.PIPE,
                 **kwargs,
