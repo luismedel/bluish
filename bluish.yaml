@@ -1,0 +1,29 @@
+
+var:
+  python_version: "3.11"
+
+jobs:
+  lint:
+    name: Lint code
+    steps:
+      - run: |
+          ruff version
+          ruff check src/ test/
+          echo ""
+          mypy --version
+          mypy --ignore-missing-imports --python-version=${{ pipe.python_version }} src/ test/
+
+  lint-fix:
+    steps:
+      - run: |
+          ruff version
+          ruff check --select I --fix src/ test/
+          ruff format src/
+          echo ""
+
+  test:
+    name: Run tests
+    help: Runs pytest on test/
+
+    steps:
+      - run: pytest
