@@ -54,14 +54,14 @@ def main(
     conn.echo_commands = not hide_commands
     conn.echo_output = not hide_output
 
-    pipe = PipeContext(conn, yaml.safe_load(yaml_contents))
+    pipe = PipeContext(yaml.safe_load(yaml_contents), conn)
     ctx.obj = pipe
 
 
 @main.command("list")
 @click.pass_obj
 def list_jobs(pipe: PipeContext) -> None:
-    available_jobs = pipe.get_jobs()
+    available_jobs = pipe.jobs
 
     if len(available_jobs) == 0:
         fatal("No jobs found in pipeline file.")
@@ -69,9 +69,9 @@ def list_jobs(pipe: PipeContext) -> None:
     ids = []
     names = []
 
-    for id, desc in available_jobs.items():
+    for id, job in available_jobs.items():
         ids.append(id)
-        names.append(desc.get("name", ""))
+        names.append(job.attrs.name or "")
 
     len_id = max([len(id) for id in ids])
 
@@ -87,7 +87,7 @@ def list_jobs(pipe: PipeContext) -> None:
 @click.argument("job_id", type=str, required=False, nargs=-1)
 @click.pass_obj
 def run_jobs(pipe: PipeContext, job_id: list[str]) -> None:
-    available_jobs = pipe.get_jobs()
+    available_jobs = pipe.jobs
     if len(available_jobs) == 0:
         fatal("No jobs found in pipeline file.")
 

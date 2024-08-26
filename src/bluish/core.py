@@ -1,15 +1,14 @@
 import logging
-import os
 import random
 import re
 import subprocess
 import sys
 from functools import wraps
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Never, Optional, TypeVar, cast
 
 from bluish.utils import decorate_for_log, ensure_dict
 
-REGISTERED_ACTIONS: Dict[str, Callable[["JobContext"], "ProcessResult"]] = {}
+REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
 
 
 SHELLS = {
@@ -22,9 +21,30 @@ SHELLS = {
 DEFAULT_SHELL = "bash"
 
 
-def fatal(message: str, exit_code: int = 1) -> None:
+def fatal(message: str, exit_code: int = 1) -> Never:
     logging.critical(message)
     exit(exit_code)
+
+def traverse_context(obj: Any, path: str) -> Any:
+    parts = path.split(".")
+    while parts:
+        key = parts.pop(0)
+        if isinstance(obj, dict):
+            obj = obj.get(key)
+        elif hasattr(obj, key):
+            obj = getattr(obj, key)
+        elif hasattr(obj.attrs, key):
+            obj = getattr(obj.attrs, key)
+        elif obj.attrs._with and key in obj.attrs._with:
+            obj = obj.attrs[key]
+        else:
+            return (False, None)
+
+        if obj is None:
+            return (False, None)
+
+    return (True, obj)
+    
 
 
 class VariableExpandError(Exception):
@@ -112,27 +132,11 @@ class Connection:
                 logging.info(f"At @{self._host}")
             logging.info(decorate_for_log(command))
 
-        remote_command: str
-
-        interpreter = kwargs.pop("interpreter", None)
-        if interpreter:
-            heredocstr = f"EOF_{random.randint(1, 1000)}"
-            remote_command = f"""cat <<{heredocstr} | {interpreter}
-{command}
-{heredocstr}
-"""
-        else:
-            remote_command = command
-
-        working_dir = kwargs.pop("working_dir", None)
-        if working_dir:
-            remote_command = f'cd "{working_dir}" && {remote_command}'
-
         final_command: str
         if self._host:
-            final_command = f'ssh {self._host} -- "{remote_command}"'
+            final_command = f'ssh {self._host} -- "{command}"'
         else:
-            final_command = remote_command
+            final_command = command
 
         result = self.capture_subprocess_output(final_command, self.echo_output)
 
@@ -147,59 +151,49 @@ class Connection:
         return ProcessResult(result)
 
 
-class Context:
-    def __init__(self, conn: Connection, definition: dict[str, Any]):
-        self.conn = conn
-        self.definition = definition
-
-        self.vars: dict[str, Any] = {}
-        vars = ensure_dict(definition.get("var"))
-        if vars:
-            for name, value in vars.items():
-                self.set_var(name, value)
-
-    def has_var(self, name: str) -> bool:
-        return name in self.vars
-
-    def set_var(self, name: str, value: Any) -> None:
-        self.vars[name] = value
+TResult = TypeVar("TResult")
 
 
-class PipeContext(Context):
-    def __init__(self, conn: Connection, definition: dict[str, Any]):
-        super().__init__(conn, definition)
+class ContextAttrs:
+    def __init__(self, definition: dict[str, Any]):
+        self.__dict__.update(definition)
 
-    def get_jobs(self) -> dict[str, Any]:
-        return self.definition["jobs"]
+    def __getattr__(self, name: str) -> Any:
+        if name == "_with":
+            return getattr(self, "with")
+        elif name == "_if":
+            return getattr(self, "if")
+        else:
+            return None
 
-    def dispatch_all(self) -> None:
-        for id in self.get_jobs().keys():
-            self.dispatch_job(id)
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_with":
+            setattr(self, "with", value)
+        elif name == "_if":
+            setattr(self, "if", value)
+        else:
+            self.__dict__[name] = value
 
-    def dispatch_job(self, id: str) -> None:
-        # Initialize builtin vars if not already set
-        if "working_dir" not in self.vars:
-            wd = (
-                self.definition.get("working_dir")
-                or self.conn.run("pwd").stdout.strip()
-            )
-            self.vars["working_dir"] = wd
-
-        ctx = JobContext(self, id, self.definition["jobs"][id])
-        ctx.dispatch()
+    def ensure_property(self, name: str, default_value: Any) -> None:
+        value = getattr(self, name, None)
+        if value is None:
+            setattr(self, name, default_value)
 
 
-class JobContext(Context):
-    def __init__(self, pipe: PipeContext, id: str, definition: dict[str, Any]):
-        self.pipe = pipe
-        self.id = id
-        self.job_definition = definition
-        assert self.job_definition is not None
-        self.steps = self.job_definition["steps"]
-        self.can_fail = self.job_definition.get("can_fail", False)
-        self._var_regex = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
-        self._current_step = 0
-        super().__init__(pipe.conn, self.job_definition)
+class ContextNode:
+    VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
+
+    def __init__(self, parent: Optional["ContextNode"], definition: dict[str, Any]):
+        self.parent = parent
+        self.attrs = ContextAttrs(definition)
+        self.attrs.ensure_property("env", {})
+
+        self.env: dict[str, Any] = dict(self.attrs.env)
+
+    def get_root(self) -> "ContextNode":
+        if self.parent:
+            return self.parent.get_root()
+        return self
 
     def _expand(self, value: Any, _depth: int = 1) -> str:
         MAX_RECURSION = 5
@@ -217,188 +211,258 @@ class JobContext(Context):
             if match.group(0).startswith("$$"):
                 return match.group(0)[1:]
             try:
-                return self._expand(
-                    self.get_var(match.group(1), raw=True), _depth=_depth + 1
-                )
+                found, v = self.try_get_value(match.group(1), raw=True)
+                if not found:
+                    return ""
+                return self._expand(v, _depth=_depth + 1)
             except VariableExpandError:
                 if _depth > 1:
                     raise
                 fatal(f"Too much recursion expanding {match.group(1)} in '{value}'")
-                return ""  # unreachable
 
-        return self._var_regex.sub(replace_match, value)
+        return self.VAR_REGEX.sub(replace_match, value)
 
-    @property
-    def current_step(self) -> dict[str, Any] | None:
-        if not self.steps:
-            return None
-        if self._current_step < 0 or self._current_step >= len(
-            self.job_definition["steps"]
-        ):
-            return None
-        return self.steps[self._current_step]
+    def try_get_env(self, name: str) -> tuple[bool, Any]:
+        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
+        if prefix not in ("env", ""):
+            return (False, None)
 
-    def increment_step(self) -> bool:
-        self._current_step += 1
-        return self.current_step is not None
+        obj: ContextNode | None = self
+        while obj is not None:
+            if varname in obj.env:
+                return (True, obj.env[varname])
+            obj = obj.parent
+        
+        return (False, None)
 
-    def dispatch(self) -> None:
-        if self.current_step is None:
-            return
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+        found, value = self.try_get_env(name)
+        if found:
+            return (True, value)
 
-        while self.current_step is not None:
-            step = self.current_step
+        if hasattr(self, name):
+            return (True, getattr(self, name))
 
-            if "name" in step:
-                logging.info(f"Processing step: {step['name']}")
+        if hasattr(self.attrs, name):
+            return (True, getattr(self.attrs, name))
 
-            execute_action: bool = True
+        if self.attrs._with and name in self.attrs._with:
+            return (True, self.attrs._with[name])
 
-            if "if" in step:
-                condition = step["if"]
-                logging.info(f"Testing {condition}")
-                if not isinstance(condition, str):
-                    fatal("Condition must be a string")
+        return (False, None)
 
-                check_cmd = condition.strip()
-                check_result = self.run(check_cmd).stdout.strip()
-                if not check_result.endswith("true") and not check_result.endswith("1"):
-                    logging.info("Skipping step")
-                    execute_action = False
+    def set_value(self, name: str, value: Any) -> bool:
+        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
+        if prefix not in ("env", ""):
+            return False
 
-            if execute_action:
-                fqn = step.get("uses", "command-runner")
-                fn = REGISTERED_ACTIONS.get(fqn)
-                if fn:
-                    logging.info(f"Running action: {fqn}")
-                    result = fn(self)
-                else:
-                    fatal(f"Unknown action: {fqn}")
-                self.save_output(result)
+        obj: ContextNode | None = self
+        while obj is not None:
+            if varname in obj.env:
+                obj.env[varname] = value
+                return True
+            obj = obj.parent
+        return False
 
-            self.increment_step()
+    def dispatch(self) -> ProcessResult | None:
+        pass
 
-    def run(self, command: str, fail: bool | None = None) -> ProcessResult:
-        assert self.current_step is not None
 
-        command = self._expand(command.strip())
-        lines = command.splitlines()
-        while lines and lines[-1].strip() == "":
-            lines.pop()
+class PipeContext(ContextNode):
+    def __init__(self, definition: dict[str, Any], connection: Connection) -> None:
+        super().__init__(None, definition)
 
-        command = "\n".join(lines)
+        self.conn = connection
+        self.output: str = ""
 
-        if fail is None:
-            can_fail = self.current_step.get("can_fail", False)
+        self.attrs.ensure_property("var", {})
+        self.attrs.ensure_property("jobs", {})
+        self.attrs.ensure_property("pipelines", {})
+
+        if "WORKING_DIR" not in self.env:
+            self.env["WORKING_DIR"] = self.conn.run("pwd").stdout.strip()
+
+        self.jobs: dict[str, JobContext] = {
+            k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()
+        }
+
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+        found, value = super().try_get_value(name, raw)
+        if found:
+            return (True, value)
+        return traverse_context(self, name)
+
+    def set_value(self, name: str, value: Any) -> bool:
+        if super().set_value(name, value):
+            return True
+
+        obj = self
+        path, varname = name.rsplit(".", maxsplit=1)
+        found, obj = traverse_context(self, path)
+        if not found:
+            raise ValueError(f"Variable {name} not found")
+
+        if isinstance(obj, dict):
+            obj[varname] = value
         else:
-            can_fail = fail
+            setattr(obj, varname, value)
+        return True
 
-        shell = self.current_step.get("shell", DEFAULT_SHELL)
-        interpreter = SHELLS.get(shell, shell)
-
-        working_dir = self.get_var("pipe.working_dir")
-
-        return self.pipe.conn.run(
-            command,
-            fail=not can_fail,
-            interpreter=interpreter,
-            working_dir=working_dir,
-        )
-
-    def get_var(self, name: str, raw: bool = False) -> str:
-        assert self.current_step is not None
-
-        def expand(raw_var: Any) -> Any:
-            if raw or not isinstance(raw_var, str):
-                return raw_var
-            return self._expand(raw_var)
-
-        if "." in name:
-            prefix, name = name.split(".", maxsplit=1)
-            if prefix == "input":
-                _with = self.current_step.get("with", {})
-                return expand(_with.get(name))
-            elif prefix == "step":
-                return expand(self.vars.get(name))
-            elif prefix == "pipe":
-                return expand(self.pipe.vars.get(name))
-            elif prefix == "env":
-                return expand(os.environ.get(name))
-            else:
-                if name in self.vars:
-                    return expand(self.vars.get(name))
-                logging.warn(f"Variable {prefix}.{name} not found.")
-                return ""
-        else:
-            _with = self.current_step.get("with", {})
-            if name in _with:
-                return expand(_with[name])
-            elif name in self.vars:
-                return expand(self.vars[name])
-            elif name in self.pipe.vars:
-                return expand(self.pipe.vars[name])
-            else:
-                logging.warn(f"Variable {name} not found.")
-                return ""
-
-    def set_var(self, name: str, value: str) -> None:
-        if "." in name:
-            prefix, name = name.split(".", maxsplit=1)
-
-            if prefix == "step":
-                self.vars[name] = value
-            elif prefix == "pipe":
-                self.pipe.vars[name] = value
-            else:
-                self.vars[name] = value
-        else:
-            if self.has_var(name):
-                self.vars[name] = value
-            elif self.pipe.has_var(name):
-                self.pipe.vars[name] = value
-            else:
-                self.vars[name] = value
-
-    def dump_vars(self) -> dict[str, Any]:
-        assert self.current_step is not None
-
-        result = {}
-        _with = self.current_step.get("with", {})
-        result.update({f"input.{k}": v for k, v in _with.items()})
-        result.update({f"step.{k}": v for k, v in self.vars.items()})
-        result.update({f"pipe.{k}": v for k, v in self.pipe.vars.items()})
-
-        # Now without prefix, preserving the "logic?" order
-        result.update(self.pipe.vars)
-        result.update(self.vars)
-        result.update(_with)
+    def dispatch(self) -> ProcessResult | None:
+        result: ProcessResult | None = None
+        for id in self.jobs.keys():
+            result = self.dispatch_job(id)
         return result
 
-    def get_inputs(self) -> dict[str, Any]:
-        assert self.current_step is not None
+    def dispatch_job(self, id: str) -> ProcessResult | None:
+        if id not in self.jobs:
+            raise ValueError(f"Job {id} not found")
 
-        inputs = ensure_dict(self.current_step.get("with"))
-        if not inputs:
-            return {}
+        return self.jobs[id].dispatch()
 
-        return {k: self._expand(v) for k, v in inputs.items()}
 
-    def save_output(self, result: ProcessResult) -> None:
-        assert self.current_step is not None
+class JobContext(ContextNode):
+    def __init__(self, parent: PipeContext, id: str, definition: dict[str, Any]):
+        super().__init__(parent, definition)
 
-        output = result.stdout.strip()
+        self.root = parent
+        self.id = id
+        self.output: str = ""
 
-        if "output_alias" in self.current_step:
-            key = self.current_step["output_alias"]
-            self.set_var(key, output)
+        self.attrs.ensure_property("steps", [])
+        self.attrs.ensure_property("can_fail", False)
 
-        if "id" in self.current_step:
-            key = f"steps.{self.current_step['id']}.output"
-            self.set_var(key, output)
+        self.steps: list[StepContext] = [
+            StepContext(self, step) for step in self.attrs.steps
+        ]
 
-        key = f"pipe.jobs.{self.id}.output"
-        self.set_var(key, output)
+    def dispatch(self) -> ProcessResult | None:
+        result: ProcessResult | None = None
+        for step in self.steps:
+            result = step.dispatch()
 
+        if result:
+            self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
+
+        return result
+
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+        found, value = self.try_get_env(name)
+        if found:
+            return (True, value)
+
+        prefix, _ = name.split(".", maxsplit=1) if "." in name else ("", name)
+        if prefix != "steps":
+            return self.root.try_get_value(name, raw)
+
+        return traverse_context(self, name)
+
+    def set_value(self, name: str, value: Any) -> bool:
+        prefix, _ = name.split(".", maxsplit=1) if "." in name else ("", name)
+        if prefix != "steps":
+            return self.root.set_value(name, value)
+
+        path, varname = name.rsplit(".", maxsplit=1)
+        found, obj = traverse_context(self, path)
+        if not found:
+            raise ValueError(f"Variable {name} not found")
+
+        if isinstance(obj, dict):
+            obj[varname] = value
+        else:
+            setattr(obj, varname, value)
+        return True
+ 
+
+class StepContext(ContextNode):
+    def __init__(self, parent: JobContext, definition: dict[str, Any]):
+        super().__init__(parent, definition)
+
+        self.job = parent
+        self.output: str = ""
+
+        self.attrs.ensure_property("name", "")
+        self.attrs.ensure_property("uses", "command-runner")
+        self.attrs.ensure_property("if", None)
+        self.attrs.ensure_property("can_fail", False)
+        self.attrs.ensure_property("shell", DEFAULT_SHELL)
+        self.attrs.ensure_property("with", {})
+
+    def dispatch(self) -> ProcessResult | None:
+        if self.attrs.name:
+            logging.info(f"Processing step: {self.attrs.name}")
+
+        execute_action: bool = True
+
+        if self.attrs._if:
+            logging.info(f"Testing {self.attrs._if}")
+            if not isinstance(self.attrs._if, str):
+                fatal("Condition must be a string")
+
+            check_cmd = self.attrs._if.strip()
+            check_result = self.run_command(check_cmd).stdout.strip()
+            if not check_result.endswith("true") and not check_result.endswith("1"):
+                logging.info("Skipping step")
+                execute_action = False
+
+        if execute_action:
+            fqn = self.attrs.uses or "command-runner"
+            fn = REGISTERED_ACTIONS.get(fqn)
+            if not fn:
+                fatal(f"Unknown action: {fqn}")
+
+            logging.info(f"Running action: {fqn}")
+            return fn(self)
+        return None
+
+    def run_command(self, command: str) -> ProcessResult:
+        command = self._expand(command).strip()
+
+        interpreter = SHELLS.get(self.attrs.shell, self.attrs.shell)
+        if interpreter:
+            heredocstr = f"EOF_{random.randint(1, 1000)}"
+            command = f"""cat <<{heredocstr} | {interpreter}
+{command}
+{heredocstr}
+"""
+
+        has_wd, working_dir = self.try_get_value("env.WORKING_DIR")
+        if has_wd:
+            command = f'cd "{working_dir}" && {command}'
+
+        if False:
+            lines = command.splitlines()
+            while lines and lines[-1].strip() == "":
+                lines.pop()
+
+            command = "\n".join(lines)
+
+        return self.job.root.conn.run(command, fail=self.attrs.can_fail is True)
+
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+        found, value = self.try_get_env(name)
+        if found:
+            return (True, value)
+
+        found, obj = traverse_context(self, name)
+        if not found:
+            return self.job.try_get_value(name, raw)
+        return (True, obj)
+
+    def set_value(self, name: str, value: Any) -> bool:
+        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
+        if prefix != "with":
+            return self.job.set_value(name, value)
+
+        found, obj = traverse_context(self, name)
+        if not found:
+            raise ValueError(f"Variable {name} not found")
+        
+        if isinstance(obj, dict):
+            obj[varname] = value
+        else:
+            setattr(obj, varname, value)
+        return True
 
 class RequiredInputError(Exception):
     def __init__(self, param: str):
@@ -416,32 +480,30 @@ def action(
     required_inputs: list[str] | None = None,
 ) -> Any:
     def inner(
-        func: Callable[[JobContext], ProcessResult]
-    ) -> Callable[[JobContext], ProcessResult]:
+        func: Callable[[StepContext], ProcessResult]
+    ) -> Callable[[StepContext], ProcessResult]:
         @wraps(func)
-        def wrapper(ctx: JobContext) -> ProcessResult:
-            assert ctx.current_step is not None
+        def wrapper(step: StepContext) -> ProcessResult:
+            def exists(key: str, values: dict) -> bool:
+                return (
+                    "|" in key and any(i in values for i in key.split("|"))
+                ) or key in values
+
             if required_attrs:
-                step = ctx.current_step
                 for attr in required_attrs:
-                    if "|" in attr and any(i in step for i in attr.split("|")):
-                        continue
-                    elif attr in step:
-                        continue
-                    else:
+                    if not exists(attr, step.attrs.__dict__):
                         raise RequiredAttributeError(attr)
 
             if required_inputs:
-                ctx_inputs = ctx.get_inputs()
+                inputs = step.attrs._with
+                if not inputs:
+                    raise RequiredInputError(required_inputs[0])
+
                 for param in required_inputs:
-                    if "|" in param and any(i in ctx_inputs for i in param.split("|")):
-                        continue
-                    elif param in ctx_inputs:
-                        continue
-                    else:
+                    if not exists(param, inputs):
                         raise RequiredInputError(param)
 
-            return func(ctx)
+            return func(step)
 
         REGISTERED_ACTIONS[fqn] = wrapper
         return wrapper
