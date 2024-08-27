@@ -43,20 +43,27 @@ jobs:
 def test_conditions() -> None:
     pipe = create_pipe("""
 jobs:
+    # check == false at the job level
     job1:
         name: "Job 1"
         if: "false && echo 1"
         steps:
             - run: echo 'This will not be printed'
+
+    # check == true at the job level
     job2:
         name: "Job 2"
         if: "true && echo 1"
         steps:
             - run: echo 'This is Job 2'
+
+    # no check (default == true)
     job3:
         name: "Job 3"
         steps:
             - run: echo 'This is Job 3'
+
+    # check == true at the step level
     job4:
         name: "Job 4"
         steps:
@@ -65,6 +72,8 @@ jobs:
                 exit(0)
               run: |
                 print("This is Job 4")
+
+    # check == false at the step level
     job5:
         name: "Job 5"
         steps:
