@@ -336,7 +336,9 @@ class PipeContext(ContextNode):
                 logging.info(f"At @{host}")
             logging.info(decorate_for_log(command))
 
-        raise_on_fail = context.attrs.can_fail is True
+        can_fail = (
+            context.attrs.can_fail if context.attrs.can_fail is not None else False
+        )
 
         shell = (
             context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
@@ -360,9 +362,10 @@ class PipeContext(ContextNode):
         )
 
         if result.failed:
-            if raise_on_fail:
-                raise ProcessError(result)
-            logging.warning(f"Command failed with exit status {result.returncode}")
+            msg = f"Command failed with exit status {result.returncode}"
+            if not can_fail:
+                raise ProcessError(result, msg)
+            logging.warning(msg)
 
         return result
 

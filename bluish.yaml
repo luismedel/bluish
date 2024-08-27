@@ -17,7 +17,7 @@ jobs:
 
   lint-fix:
     name: Reformats the code using ruff
-    requires:
+    depends_on:
       - lint
     steps:
       - run: |

@@ -3,6 +3,7 @@ import yaml
 
 from bluish.core import (
     Connection,
+    JobContext,
     PipeContext,
     ProcessError,
     fatal,
@@ -85,9 +86,10 @@ def list_jobs(pipe: PipeContext) -> None:
 
 
 @main.command("run")
-@click.argument("job_id", type=str, required=False, nargs=-1)
+@click.argument("job_id", type=str, required=True)
+@click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.pass_obj
-def run_jobs(pipe: PipeContext, job_id: list[str]) -> None:
+def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
     available_jobs = pipe.jobs
     if len(available_jobs) == 0:
         fatal("No jobs found in pipeline file.")
@@ -95,13 +97,43 @@ def run_jobs(pipe: PipeContext, job_id: list[str]) -> None:
     if not job_id:
         fatal("No job id specified.")
 
-    for id in job_id:
-        if id not in available_jobs:
-            fatal(f"Invalid job id: {id}")
+    job = available_jobs.get(job_id)
+    if not job:
+        fatal(f"Invalid job id: {job_id}")
+
+    executed_jobs: set[str] = set()
+    deps: dict[str, list[JobContext]] = {}
+
+    def gen_dependencies(job: JobContext) -> None:
+        if job.id in deps:
+            return
+        deps[job.id] = []
+        for dep in job.attrs.depends_on or []:
+            dep_job = available_jobs.get(dep)
+            if not dep_job:
+                fatal(f"Invalid dependency job id: {dep}")
+            deps[job.id].append(dep_job)
+            gen_dependencies(dep_job)
+
+    def dispatch_job(job: JobContext):
+        if job.id in executed_jobs:
+            return
+        executed_jobs.add(job.id)
+
+        dependencies = deps.get(job.id)
+        if dependencies:
+            for dependency in dependencies:
+                dispatch_job(dependency)
+
+        job.dispatch()
+
+    if not no_deps:
+        gen_dependencies(job)
+
+    print(deps)
 
     try:
-        for id in job_id:
-            pipe.dispatch_job(id)
+        dispatch_job(job)
     except ProcessError as e:
         fatal(str(e), e.result.returncode)
     except Exception as e:
