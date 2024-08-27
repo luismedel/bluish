@@ -39,8 +39,8 @@ jobs:
             - run: echo 'This is Job 2, step 2'
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.job1.output") == (True, "This is Job 1")
-    assert pipe.try_get_value("jobs.job2.output") == (True, "This is Job 2, step 2")
+    assert pipe.jobs["job1"].output == "This is Job 1"
+    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
 
 
 def test_working_directory() -> None:
@@ -55,7 +55,7 @@ jobs:
             - run: pwd
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.working_directory.output") == (True, "/tmp")
+    assert pipe.jobs["working_directory"].output == "/tmp"
 
 
 def test_generic_run() -> None:
@@ -67,7 +67,7 @@ jobs:
             - run: echo 'Hello, World!'
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.hello.output") == (True, "Hello, World!")
+    assert pipe.jobs["hello"].output == "Hello, World!"
 
 
 def test_mandatory_attributes() -> None:
@@ -114,7 +114,7 @@ jobs:
             - run: pwd
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.cwd.output") == (True, "/tmp")
+    assert pipe.jobs["cwd"].output == "/tmp"
 
 
 def test_expansion() -> None:
@@ -131,7 +131,25 @@ jobs:
             - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.expansion.output") == (True, "Hello World! :-)")
+    assert pipe.jobs["expansion"].output == "Hello World! :-)"
+
+
+def test_values() -> None:
+    pipe = create_pipe("""
+env:
+    VALUE: 1
+
+jobs:
+    values:
+        name: Test values
+        steps:
+            - run: echo 'VALUE == ${{ env.VALUE }}'
+""")
+    pipe.dispatch()
+    assert pipe.try_get_value("VALUE") == (True, "1")
+    assert pipe.try_get_value("env.VALUE") == (True, "1")
+    assert pipe.jobs["values"].output == "VALUE == 1"
+    assert pipe.try_get_value("jobs.values.output") == (True, "VALUE == 1")
 
 
 def test_env_overriding() -> None:
@@ -150,7 +168,7 @@ jobs:
             SMILEY: ":-DDDD"
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.override_test.output") == (True, "Hello World! :-DDDD")
+    assert pipe.jobs["override_test"].output == "Hello World! :-DDDD"
 
 
 def test_expand_template() -> None:
@@ -170,5 +188,4 @@ jobs:
     """)
         pipe.dispatch()
         assert pipe.jobs["expand_template"].output == "Hello, World!"
-        assert pipe.try_get_value("jobs.expand_template.output") == (True, "Hello, World!")
         assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"

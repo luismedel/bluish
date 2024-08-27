@@ -4,9 +4,9 @@ import re
 import subprocess
 import sys
 from functools import wraps
-from typing import Any, Callable, Dict, Never, Optional, TypeVar, cast
+from typing import Any, Callable, Dict, Never, Optional, TypeVar
 
-from bluish.utils import decorate_for_log, ensure_dict
+from bluish.utils import decorate_for_log
 
 REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
 
@@ -25,7 +25,7 @@ def fatal(message: str, exit_code: int = 1) -> Never:
     logging.critical(message)
     exit(exit_code)
 
-def traverse_context(obj: Any, path: str) -> Any:
+def traverse_context(obj: Any, path: str) -> tuple[bool, Any]:
     parts = path.split(".")
     while parts:
         key = parts.pop(0)
@@ -38,10 +38,10 @@ def traverse_context(obj: Any, path: str) -> Any:
         elif obj.attrs._with and key in obj.attrs._with:
             obj = obj.attrs[key]
         else:
-            return (False, None)
+            return (False, "")
 
         if obj is None:
-            return (False, None)
+            return (False, "")
 
     return (True, obj)
     
@@ -201,7 +201,7 @@ class ContextNode:
         if value is None:
             return ""
 
-        if not isinstance(value, str) or "$" not in value:
+        if (not isinstance(value, str)) or ("$" not in value):
             return value
 
         if _depth == MAX_EXPAND_RECURSION:
@@ -222,23 +222,23 @@ class ContextNode:
 
         return self.VAR_REGEX.sub(replace_match, value)
 
-    def try_get_env(self, name: str) -> tuple[bool, Any]:
+    def try_get_env(self, name: str) -> tuple[bool, str]:
         prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
         if prefix not in ("env", ""):
-            return (False, None)
+            return (False, "")
 
         obj: ContextNode | None = self
         while obj is not None:
             if varname in obj.env:
-                return (True, obj.env[varname])
+                return (True, str(obj.env[varname]))
             obj = obj.parent
-        
-        return (False, None)
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+        return (False, "")
+
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         raise NotImplementedError()
 
-    def set_value(self, name: str, value: Any) -> bool:
+    def set_value(self, name: str, value: str) -> bool:
         prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
         if prefix not in ("env", ""):
             return False
@@ -266,20 +266,26 @@ class PipeContext(ContextNode):
         self.attrs.ensure_property("jobs", {})
         self.attrs.ensure_property("pipelines", {})
 
-        if "WORKING_DIR" not in self.env:
-            self.env["WORKING_DIR"] = self.conn.run("pwd").stdout.strip()
+        self.attrs.env = {
+            "WORKING_DIR": self.conn.run("pwd").stdout.strip(),
+            "HOST": self.conn._host or "",
+            **self.attrs.env,
+        }
 
         self.jobs = {
             k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()
         }
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)
         if found:
             return (True, value)
-        return traverse_context(self, name)
+        found, value = traverse_context(self, name)
+        if found:
+            return (True, str(value))
+        return (False, "")
 
-    def set_value(self, name: str, value: Any) -> bool:
+    def set_value(self, name: str, value: str) -> bool:
         if super().set_value(name, value):
             return True
 
@@ -302,7 +308,8 @@ class PipeContext(ContextNode):
         return result
 
     def dispatch_job(self, id: str) -> ProcessResult | None:
-        job = next((j for j in self.jobs if j.id == id), None)
+        print(self.jobs)
+        job = next((v for k, v in self.jobs.items() if k == id), None)
         if not job:
             raise ValueError(f"Job {id} not found")
         return job.dispatch()
@@ -333,7 +340,7 @@ class JobContext(ContextNode):
 
         return result
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)
         if found:
             return (True, value)
@@ -342,9 +349,12 @@ class JobContext(ContextNode):
         if prefix != "steps":
             return self.pipe.try_get_value(name, raw)
 
-        return traverse_context(self, name)
+        found, value = traverse_context(self, name)
+        if found:
+            return (True, str(value))
+        return (False, "")
 
-    def set_value(self, name: str, value: Any) -> bool:
+    def set_value(self, name: str, value: str) -> bool:
         prefix, _ = name.split(".", maxsplit=1) if "." in name else ("", name)
         if prefix != "steps":
             return self.pipe.set_value(name, value)
@@ -429,17 +439,17 @@ class StepContext(ContextNode):
 
         return self.job.pipe.conn.run(command, fail=self.attrs.can_fail is True)
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, Any]:
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)
         if found:
             return (True, value)
 
-        found, obj = traverse_context(self, name)
+        found, value = traverse_context(self, name)
         if not found:
             return self.job.try_get_value(name, raw)
-        return (True, obj)
+        return (True, str(value))
 
-    def set_value(self, name: str, value: Any) -> bool:
+    def set_value(self, name: str, value: str) -> bool:
         prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
         if prefix != "with":
             return self.job.set_value(name, value)
