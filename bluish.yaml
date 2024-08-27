@@ -1,9 +1,10 @@
 
-var:
-  bluish_version: "0.0.1"
-  python_version: "3.11"
+env:
+  BLUISH_VERSION: "0.0.1"
+  PYTHON_VERSION: "3.11"
 
-jobs:
+
+  jobs:
   lint:
     name: Runs ruff and mypy
     steps:
@@ -12,10 +13,12 @@ jobs:
           ruff check src/ test/
           echo ""
           mypy --version
-          mypy --ignore-missing-imports --python-version=${{ pipe.python_version }} src/ test/
+          mypy --ignore-missing-imports --python-version=${{ PYTHON_VERSION }} src/ test/
 
   lint-fix:
     name: Reformats the code using ruff
+    requires:
+      - lint
     steps:
       - run: |
           ruff version

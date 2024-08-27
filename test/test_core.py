@@ -22,7 +22,7 @@ def create_pipe(yaml_definition: str) -> PipeContext:
     conn.echo_commands = False
     conn.echo_output = False
     definition = yaml.safe_load(yaml_definition)
-    return PipeContext(Connection(), definition)
+    return PipeContext(definition, Connection())
 
 
 def test_multiple_jobs() -> None:
@@ -38,14 +38,15 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.job1.output"] == "This is Job 1"
-    assert pipe.vars["jobs.job2.output"] == "This is Job 2, step 2"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.job1.output") == (True, "This is Job 1")
+    assert pipe.try_get_value("jobs.job2.output") == (True, "This is Job 2, step 2")
 
 
 def test_working_directory() -> None:
     pipe = create_pipe("""
-working_dir: /tmp
+env:
+    WORKING_DIR: /tmp
 
 jobs:
     working_directory:
@@ -53,8 +54,8 @@ jobs:
         steps:
             - run: pwd
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.working_directory.output"] == "/tmp"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.working_directory.output") == (True, "/tmp")
 
 
 def test_generic_run() -> None:
@@ -65,8 +66,8 @@ jobs:
         steps:
             - run: echo 'Hello, World!'
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.hello.output"] == "Hello, World!"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.hello.output") == (True, "Hello, World!")
 
 
 def test_mandatory_attributes() -> None:
@@ -77,7 +78,7 @@ jobs:
             - name: 'This step lacks a run property'
 """)
     try:
-        pipe.dispatch_all()
+        pipe.dispatch()
         assert False
     except RequiredAttributeError:
         assert True
@@ -85,8 +86,8 @@ jobs:
 
 def test_mandatory_inputs() -> None:
     pipe = create_pipe("""
-var:
-    - WORLD: "World!"
+env:
+    WORLD: "World!"
 
 jobs:
     mandatory_inputs:
@@ -96,7 +97,7 @@ jobs:
                   - input: "Hello, ${{{{ pipe.WORLD }}}}"
 """)
     try:
-        pipe.dispatch_all()
+        pipe.dispatch()
         assert False
     except RequiredInputError:
         assert True
@@ -104,68 +105,70 @@ jobs:
 
 def test_cwd() -> None:
     pipe = create_pipe("""
-working_dir: /tmp
+env:
+    WORKING_DIR: /tmp
 
 jobs:
     cwd:
         steps:
             - run: pwd
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.cwd.output"] == "/tmp"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.cwd.output") == (True, "/tmp")
 
 
 def test_expansion() -> None:
     pipe = create_pipe("""
-var:
-    - HELLO: "Hello"
-    - WORLD: "World!"
-    - SMILEY: ":-)"
+env:
+    HELLO: "Hello"
+    WORLD: "World!"
+    SMILEY: ":-)"
 
 jobs:
     expansion:
         name: Test expansion
         steps:
-            - run: echo '${{ pipe.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
+            - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.expansion.output"] == "Hello World! :-)"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.expansion.output") == (True, "Hello World! :-)")
 
 
-def test_variable_overriding() -> None:
+def test_env_overriding() -> None:
     pipe = create_pipe("""
-var:
-    - HELLO: "Hello"
-    - WORLD: "World!"
-    - SMILEY: ":-("
+env:
+    HELLO: "Hello"
+    WORLD: "World!"
+    SMILEY: ":-("
 
 jobs:
-    override:
+    override_test:
         name: Test expansion
         steps:
-            - run: echo '${{ pipe.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
-        var:
-            - SMILEY: ":-DDDD"
+            - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
+        env:
+            SMILEY: ":-DDDD"
 """)
-    pipe.dispatch_all()
-    assert pipe.vars["jobs.override.output"] == "Hello World! :-DDDD"
+    pipe.dispatch()
+    assert pipe.try_get_value("jobs.override_test.output") == (True, "Hello World! :-DDDD")
 
 
 def test_expand_template() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         print(temp_file)
         pipe = create_pipe(f"""
-var:
-    - WORLD: "World!"
+env:
+    WORLD: "World!"
 
 jobs:
     expand_template:
         steps:
             - uses: expand-template
               with:
-                  input: "Hello, ${{{{ pipe.WORLD }}}}"
+                  input: "Hello, ${{{{ WORLD }}}}"
                   output_file: {temp_file.name}
     """)
-        pipe.dispatch_all()
-        assert pipe.vars["jobs.expand_template.output"] == "Hello, World!"
+        pipe.dispatch()
+        assert pipe.jobs["expand_template"].output == "Hello, World!"
+        assert pipe.try_get_value("jobs.expand_template.output") == (True, "Hello, World!")
         assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
