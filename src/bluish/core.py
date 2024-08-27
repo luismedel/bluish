@@ -311,9 +311,7 @@ class PipeContext(ContextNode):
             setattr(obj, varname, value)
         return True
 
-    def run_command(
-        self, command: str, context: ContextNode, override_can_fail: bool = False
-    ) -> ProcessResult:
+    def run_command(self, command: str, context: ContextNode) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
         echo_command = (
@@ -338,7 +336,7 @@ class PipeContext(ContextNode):
                 logging.info(f"At @{host}")
             logging.info(decorate_for_log(command))
 
-        raise_on_fail = (context.attrs.can_fail is True) and not override_can_fail
+        raise_on_fail = context.attrs.can_fail is True
 
         shell = (
             context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
@@ -377,12 +375,19 @@ class PipeContext(ContextNode):
             raise ValueError("Condition must be a string")
 
         check_cmd = context.attrs._if.strip()
-        check_result = self.run_command(
-            check_cmd, context, override_can_fail=True
-        ).stdout.strip()
-        if not check_result.endswith("true") and not check_result.endswith("1"):
+        try:
+            check_result = self.run_command(check_cmd, context)
+        except ProcessError:
             return False
-        return True
+
+        check_output = check_result.stdout.strip()
+        if (
+            check_result.returncode == 0
+            or check_output.endswith("true")
+            or check_output.endswith("1")
+        ):
+            return True
+        return False
 
     def dispatch(self) -> ProcessResult | None:
         if not self.can_dispatch(self):
