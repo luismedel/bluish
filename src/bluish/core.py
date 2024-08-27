@@ -381,18 +381,10 @@ class PipeContext(ContextNode):
 
         check_cmd = context.attrs._if.strip()
         try:
-            check_result = self.run_command(check_cmd, context)
+            _ = self.run_command(check_cmd, context)
+            return True
         except ProcessError:
             return False
-
-        check_output = check_result.stdout.strip()
-        if (
-            check_result.returncode == 0
-            or check_output.endswith("true")
-            or check_output.endswith("1")
-        ):
-            return True
-        return False
 
     def dispatch(self) -> ProcessResult | None:
         if not self.can_dispatch(self):
