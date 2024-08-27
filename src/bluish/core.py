@@ -306,30 +306,31 @@ class PipeContext(ContextNode):
     def run_command(self, command: str, context: ContextNode, override_can_fail: bool = False) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
-        host = self.get_inherited_attr("host") or self.conn.default_host
         echo_command = (
             self.get_inherited_attr("echo_commands", True)
             if self.attrs.echo_command is None
             else self.attrs.echo_command
         )
         echo_output = (
-            self.get_inherited_attr("echo_output", True)
+            context.get_inherited_attr("echo_output", True)
             if self.attrs.echo_output is None
             else self.attrs.echo_output
         )
 
-        if self.get_inherited_attr("is_sensitive", False):
+        if context.get_inherited_attr("is_sensitive", False):
             echo_command = False
             echo_output = False
 
-        exit_on_fail = (self.attrs.can_fail is True) and not override_can_fail
+        host = context.get_value("env.HOST", self.conn.default_host)
 
         if echo_command:
             if host:
                 logging.info(f"At @{host}")
             logging.info(decorate_for_log(command))
 
-        shell = self.get_inherited_attr("shell", DEFAULT_SHELL)
+        exit_on_fail = (context.attrs.can_fail is True) and not override_can_fail
+
+        shell = context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
         interpreter = SHELLS.get(shell, shell)
         if interpreter:
             heredocstr = f"EOF_{random.randint(1, 1000)}"

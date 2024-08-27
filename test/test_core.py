@@ -79,16 +79,44 @@ jobs:
     assert pipe.jobs["working_directory"].output == "/tmp"
 
 
-def test_generic_run() -> None:
+def test_default_run() -> None:
     pipe = create_pipe("""
 jobs:
-    hello:
+    hello_run:
         name: "Hello, World!"
         steps:
             - run: echo 'Hello, World!'
 """)
     pipe.dispatch()
-    assert pipe.jobs["hello"].output == "Hello, World!"
+    assert pipe.jobs["hello_run"].output == "Hello, World!"
+
+
+def test_shell_run_sh() -> None:
+    pipe = create_pipe("""
+jobs:
+    hello_sh:
+        name: "Hello, World!"
+        shell: sh
+        steps:
+            - run: echo 'Hello, World!'
+""")
+    pipe.dispatch()
+    assert pipe.jobs["hello_sh"].output == "Hello, World!"
+
+
+def test_shell_run_python() -> None:
+    pipe = create_pipe("""
+jobs:
+    hello_python:
+        name: "Hello, World!"
+        steps:
+            - shell: python
+              run: |
+                v = "World"
+                print(f'Hello, {v}!')
+""")
+    pipe.dispatch()
+    assert pipe.jobs["hello_python"].output == "Hello, World!"
 
 
 def test_mandatory_attributes() -> None:
@@ -115,7 +143,7 @@ jobs:
         steps:
             - uses: expand-template
               with:
-                  - input: "Hello, ${{{{ pipe.WORLD }}}}"
+                  - input: "Hello, ${{{{ env.WORLD }}}}"
 """)
     try:
         pipe.dispatch()
