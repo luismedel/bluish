@@ -5,7 +5,7 @@ from bluish.core import ProcessResult, StepContext, action
 
 @action("command-runner", required_attrs=["run"])
 def generic_run(step: StepContext) -> ProcessResult:
-    return step.run_command(step.attrs.run)
+    return step.pipe.run_command(step.attrs.run, step)
 
 
 @action("expand-template", required_inputs=["input|input_file", "output_file"])
@@ -15,7 +15,7 @@ def expand_template(step: StepContext) -> ProcessResult:
     template_content: str
     if "input_file" in inputs:
         template_file = inputs["input_file"]
-        template_content = step.run_command(f"cat {template_file}").stdout
+        template_content = step.pipe.run_command(f"cat {template_file}", step).stdout
     else:
         template_content = inputs["input"]
 
@@ -24,10 +24,11 @@ def expand_template(step: StepContext) -> ProcessResult:
     output_file = inputs.get("output_file")
     if output_file:
         heredocstr = f"EOF_{random.randint(1, 1000)}"
-        step.run_command(
+        step.pipe.run_command(
             f"""cat <<{heredocstr} > {output_file}
 {expanded_content}
 {heredocstr}
-"""
+""",
+            step,
         )
     return ProcessResult(expanded_content)

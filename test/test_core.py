@@ -40,6 +40,30 @@ jobs:
     assert pipe.jobs["job2"].output == "This is Job 2, step 2"
 
 
+def test_conditions() -> None:
+    pipe = create_pipe("""
+jobs:
+    job1:
+        name: "Job 1"
+        if: "false && echo 1"
+        steps:
+            - run: echo 'This is Job 1'
+    job2:
+        name: "Job 2"
+        if: "true && echo 1"
+        steps:
+            - run: echo 'This is Job 2'
+    job3:
+        name: "Job 3"
+        steps:
+            - run: echo 'This is Job 3'
+""")
+    pipe.dispatch()
+    assert pipe.jobs["job1"].output == ""
+    assert pipe.jobs["job2"].output == "This is Job 2"
+    assert pipe.jobs["job3"].output == "This is Job 3"
+
+
 def test_working_directory() -> None:
     pipe = create_pipe("""
 env:

@@ -250,6 +250,14 @@ class ContextNode:
     def dispatch(self) -> ProcessResult | None:
         pass
 
+    def get_inherited_attr(self, name: str, default: Any = None) -> Any:
+        obj: ContextNode | None = self
+        while obj is not None:
+            if not hasattr(obj.attrs, name):
+                return getattr(obj.attrs, name)
+            obj = obj.parent
+        return default
+
 
 class PipeContext(ContextNode):
     def __init__(self, definition: dict[str, Any], connection: Connection) -> None:
@@ -295,7 +303,79 @@ class PipeContext(ContextNode):
             setattr(obj, varname, value)
         return True
 
+    def run_command(self, command: str, context: ContextNode, override_can_fail: bool = False) -> ProcessResult:
+        command = context.expand_expr(command).strip()
+
+        host = self.get_inherited_attr("host") or self.conn.default_host
+        echo_command = (
+            self.get_inherited_attr("echo_commands", True)
+            if self.attrs.echo_command is None
+            else self.attrs.echo_command
+        )
+        echo_output = (
+            self.get_inherited_attr("echo_output", True)
+            if self.attrs.echo_output is None
+            else self.attrs.echo_output
+        )
+
+        if self.get_inherited_attr("is_sensitive", False):
+            echo_command = False
+            echo_output = False
+
+        exit_on_fail = (self.attrs.can_fail is True) and not override_can_fail
+
+        if echo_command:
+            if host:
+                logging.info(f"At @{host}")
+            logging.info(decorate_for_log(command))
+
+        shell = self.get_inherited_attr("shell", DEFAULT_SHELL)
+        interpreter = SHELLS.get(shell, shell)
+        if interpreter:
+            heredocstr = f"EOF_{random.randint(1, 1000)}"
+            command = f"""cat <<{heredocstr} | {interpreter}
+{command}
+{heredocstr}
+"""
+
+        working_dir = self.get_value("env.WORKING_DIR")
+        if working_dir:
+            command = f'cd "{working_dir}" && {command}'
+
+        result = self.conn.run(
+            command,
+            host=host,
+            echo_output=echo_output,
+        )
+
+        if result.failed:
+            msg = f"Command failed with exit status {result.returncode}"
+            if exit_on_fail:
+                fatal(msg)
+            else:
+                logging.warning(msg)
+
+        return result
+
+    def can_dispatch(self, context: ContextNode) -> bool:
+        if context.attrs._if == None:
+            return True
+
+        logging.info(f"Testing {context.attrs._if}")
+        if not isinstance(context.attrs._if, str):
+            fatal("Condition must be a string")
+
+        check_cmd = context.attrs._if.strip()
+        check_result = self.run_command(check_cmd, context, override_can_fail=True).stdout.strip()
+        if not check_result.endswith("true") and not check_result.endswith("1"):
+            return False
+        return True
+
     def dispatch(self) -> ProcessResult | None:
+        if not self.can_dispatch(self):
+            logging.info("Pipeline skipped")
+            return
+
         result: ProcessResult | None = None
         for job in self.jobs.values():
             result = job.dispatch()
@@ -324,6 +404,10 @@ class JobContext(ContextNode):
         ]
 
     def dispatch(self) -> ProcessResult | None:
+        if not self.pipe.can_dispatch(self):
+            logging.info("Job skipped")
+            return None
+
         result: ProcessResult | None = None
         for step in self.steps:
             result = step.dispatch()
@@ -380,6 +464,10 @@ class StepContext(ContextNode):
         self.attrs.ensure_property("with", {})
 
     def dispatch(self) -> ProcessResult | None:
+        if not self.pipe.can_dispatch(self):
+            logging.info("Step skipped")
+            return None
+
         if self.attrs.name:
             logging.info(f"Processing step: {self.attrs.name}")
 
@@ -391,7 +479,7 @@ class StepContext(ContextNode):
                 fatal("Condition must be a string")
 
             check_cmd = self.attrs._if.strip()
-            check_result = self.run_command(check_cmd).stdout.strip()
+            check_result = self.pipe.run_command(check_cmd, self).stdout.strip()
             if not check_result.endswith("true") and not check_result.endswith("1"):
                 logging.info("Skipping step")
                 execute_action = False
@@ -411,54 +499,6 @@ class StepContext(ContextNode):
                 )
             return result
         return None
-
-    def run_command(self, command: str) -> ProcessResult:
-        command = self.expand_expr(command).strip()
-
-        host = self.get_value("env.HOST")
-        echo_command = (
-            self.get_bool_value("env.ECHO_COMMANDS")
-            if self.attrs.echo_command is None
-            else self.attrs.echo_command
-        )
-        echo_output = (
-            self.get_bool_value("env.ECHO_OUTPUT")
-            if self.attrs.echo_output is None
-            else self.attrs.echo_output
-        )
-        if self.attrs.is_sensitive:
-            echo_command = False
-            echo_output = False
-
-        can_fail = self.attrs.can_fail is True
-
-        if echo_command:
-            if host:
-                logging.info(f"At @{host}")
-            logging.info(decorate_for_log(command))
-
-        interpreter = SHELLS.get(self.attrs.shell, self.attrs.shell)
-        if interpreter:
-            heredocstr = f"EOF_{random.randint(1, 1000)}"
-            command = f"""cat <<{heredocstr} | {interpreter}
-{command}
-{heredocstr}
-"""
-
-        working_dir = self.get_value("env.WORKING_DIR")
-        if working_dir:
-            command = f'cd "{working_dir}" && {command}'
-
-        result = self.job.pipe.conn.run(
-            command,
-            host=host,
-            echo_output=echo_output,
-        )
-
-        if result.failed and not can_fail:
-            fatal(f"Command failed with exit status {result.returncode}")
-
-        return result
 
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)

@@ -30,13 +30,13 @@ def docker_build(step: StepContext) -> ProcessResult:
     options += _build_list_opt("-t", inputs.get("tags"))
 
     context = inputs.get("context", step.try_get_value("env.WORKING_DIR"))
-    return step.run_command(f"docker build {options} {context}")
+    return step.pipe.run_command(f"docker build {options} {context}", step)
 
 
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.attrs._with["name"]
-    return step.run_command(f"docker ps -f name={name} --quiet")
+    return step.pipe.run_command(f"docker ps -f name={name} --quiet", step)
 
 
 @action("docker/run", required_inputs=["image", "name"])
@@ -47,7 +47,9 @@ def docker_run(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_running = inputs.get("fail_if_running", True)
 
-    container_pid = step.run_command(f"docker ps -f name={name} --quiet").stdout.strip()
+    container_pid = step.pipe.run_command(
+        f"docker ps -f name={name} --quiet", step
+    ).stdout.strip()
     if container_pid:
         msg = f"Container with name {name} is already running with id {container_pid}."
         if fail_if_running:
@@ -67,7 +69,9 @@ def docker_run(step: StepContext) -> ProcessResult:
         for flag in ["quiet"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
 
-        container_pid = step.run_command(f"docker run {options} {image}").stdout.strip()
+        container_pid = step.pipe.run_command(
+            f"docker run {options} {image}", step
+        ).stdout.strip()
 
     return ProcessResult(container_pid)
 
@@ -78,8 +82,8 @@ def docker_create_network(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_exists = inputs.get("fail_if_exists", True)
 
-    network_id = step.run_command(
-        f"docker network ls -f name={name} --quiet"
+    network_id = step.pipe.run_command(
+        f"docker network ls -f name={name} --quiet", step
     ).stdout.strip()
     if network_id:
         msg = f"Network {name} already exists with id {network_id}."
@@ -93,8 +97,8 @@ def docker_create_network(step: StepContext) -> ProcessResult:
             options += _build_opt(f"--{opt}", inputs.get(opt))
         for flag in ["ingress", "internal"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
-        network_id = step.run_command(
-            f"docker network create {options} {name}"
+        network_id = step.pipe.run_command(
+            f"docker network create {options} {name}", step
         ).stdout.strip()
         logging.info(f"Network {name} created with id {network_id}.")
 
