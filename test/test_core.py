@@ -47,7 +47,7 @@ jobs:
         name: "Job 1"
         if: "false && echo 1"
         steps:
-            - run: echo 'This is Job 1'
+            - run: echo 'This will not be printed'
     job2:
         name: "Job 2"
         if: "true && echo 1"
@@ -57,11 +57,29 @@ jobs:
         name: "Job 3"
         steps:
             - run: echo 'This is Job 3'
+    job4:
+        name: "Job 4"
+        steps:
+            - shell: python
+              if: |
+                exit(0)
+              run: |
+                print("This is Job 4")
+    job5:
+        name: "Job 5"
+        steps:
+            - shell: python
+              if: |
+                exit(1)
+              run: |
+                print("This will not be printed")
 """)
     pipe.dispatch()
     assert pipe.jobs["job1"].output == ""
     assert pipe.jobs["job2"].output == "This is Job 2"
     assert pipe.jobs["job3"].output == "This is Job 3"
+    assert pipe.jobs["job4"].output == "This is Job 4"
+    assert pipe.jobs["job5"].output == ""
 
 
 def test_working_directory() -> None:

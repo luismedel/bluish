@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import re
 import subprocess
@@ -279,6 +280,7 @@ class PipeContext(ContextNode):
         self.attrs.ensure_property("pipelines", {})
 
         self.env = {
+            **os.environ,
             "WORKING_DIR": self.conn.run("pwd", echo_output=False).stdout.strip(),
             "HOST": self.conn.default_host or "",
             **self.attrs.env,
@@ -500,9 +502,9 @@ class StepContext(ContextNode):
                 raise ValueError("Condition must be a string")
 
             check_cmd = self.attrs._if.strip()
-            check_result = self.pipe.run_command(check_cmd, self).stdout.strip()
-            if not check_result.endswith("true") and not check_result.endswith("1"):
-                logging.info("Skipping step")
+            try:
+                _ = self.pipe.run_command(check_cmd, self)
+            except ProcessError:
                 execute_action = False
 
         if execute_action:
