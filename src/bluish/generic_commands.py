@@ -19,7 +19,7 @@ def expand_template(step: StepContext) -> ProcessResult:
     else:
         template_content = inputs["input"]
 
-    expanded_content = template_content
+    expanded_content = step.expand_expr(template_content)
 
     output_file = inputs.get("output_file")
     if output_file:

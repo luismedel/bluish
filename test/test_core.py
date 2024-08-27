@@ -134,7 +134,7 @@ jobs:
     assert pipe.try_get_value("jobs.expansion.output") == (True, "Hello World! :-)")
 
 
-def test_variable_overriding() -> None:
+def test_env_overriding() -> None:
     pipe = create_pipe("""
 env:
     HELLO: "Hello"
@@ -142,7 +142,7 @@ env:
     SMILEY: ":-("
 
 jobs:
-    override:
+    override_test:
         name: Test expansion
         steps:
             - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
@@ -150,14 +150,14 @@ jobs:
             SMILEY: ":-DDDD"
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("jobs.override.output") == (True, "Hello World! :-DDDD")
+    assert pipe.try_get_value("jobs.override_test.output") == (True, "Hello World! :-DDDD")
 
 
 def test_expand_template() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         print(temp_file)
         pipe = create_pipe(f"""
-var:
+env:
     WORLD: "World!"
 
 jobs:
@@ -169,5 +169,6 @@ jobs:
                   output_file: {temp_file.name}
     """)
         pipe.dispatch()
+        assert pipe.jobs["expand_template"].output == "Hello, World!"
         assert pipe.try_get_value("jobs.expand_template.output") == (True, "Hello, World!")
         assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
