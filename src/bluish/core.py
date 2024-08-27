@@ -25,6 +25,7 @@ def fatal(message: str, exit_code: int = 1) -> Never:
     logging.critical(message)
     exit(exit_code)
 
+
 def traverse_context(obj: Any, path: str) -> tuple[bool, Any]:
     parts = path.split(".")
     while parts:
@@ -44,7 +45,6 @@ def traverse_context(obj: Any, path: str) -> tuple[bool, Any]:
             return (False, "")
 
     return (True, obj)
-    
 
 
 class VariableExpandError(Exception):
@@ -190,11 +190,6 @@ class ContextNode:
 
         self.env: dict[str, Any] = dict(self.attrs.env)
 
-    def get_root(self) -> "ContextNode":
-        if self.parent:
-            return self.parent.get_root()
-        return self
-
     def expand_expr(self, value: Any, _depth: int = 1) -> str:
         MAX_EXPAND_RECURSION = 5
 
@@ -272,9 +267,7 @@ class PipeContext(ContextNode):
             **self.attrs.env,
         }
 
-        self.jobs = {
-            k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()
-        }
+        self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
 
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)
@@ -369,12 +362,13 @@ class JobContext(ContextNode):
         else:
             setattr(obj, varname, value)
         return True
- 
+
 
 class StepContext(ContextNode):
     def __init__(self, parent: JobContext, definition: dict[str, Any]):
         super().__init__(parent, definition)
 
+        self.pipe = parent.pipe
         self.job = parent
         self.output: str = ""
 
@@ -411,7 +405,10 @@ class StepContext(ContextNode):
             logging.info(f"Running action: {fqn}")
             result = fn(self)
             if self.attrs.id:
-                self.set_value(f"jobs.{self.job.id}steps.{self.attrs.id}.output", result.stdout.strip())
+                self.set_value(
+                    f"jobs.{self.job.id}steps.{self.attrs.id}.output",
+                    result.stdout.strip(),
+                )
             return result
         return None
 
@@ -457,12 +454,13 @@ class StepContext(ContextNode):
         found, obj = traverse_context(self, name)
         if not found:
             raise ValueError(f"Variable {name} not found")
-        
+
         if isinstance(obj, dict):
             obj[varname] = value
         else:
             setattr(obj, varname, value)
         return True
+
 
 class RequiredInputError(Exception):
     def __init__(self, param: str):
