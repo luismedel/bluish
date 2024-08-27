@@ -4,6 +4,7 @@ import yaml
 from bluish.core import (
     Connection,
     PipeContext,
+    ProcessError,
     fatal,
     init_commands,
     init_logging,
@@ -101,8 +102,9 @@ def run_jobs(pipe: PipeContext, job_id: list[str]) -> None:
     try:
         for id in job_id:
             pipe.dispatch_job(id)
+    except ProcessError as e:
+        fatal(str(e), e.result.returncode)
     except Exception as e:
-        raise
         fatal(str(e))
 
 

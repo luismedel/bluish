@@ -1,6 +1,6 @@
 import logging
 
-from bluish.core import ProcessResult, StepContext, action, fatal
+from bluish.core import ProcessError, ProcessResult, StepContext, action
 
 
 def _build_list_opt(opt: str, items: list[str] | None) -> str:
@@ -47,15 +47,13 @@ def docker_run(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_running = inputs.get("fail_if_running", True)
 
-    container_pid = step.pipe.run_command(
-        f"docker ps -f name={name} --quiet", step
-    ).stdout.strip()
+    result = step.pipe.run_command(f"docker ps -f name={name} --quiet", step)
+    container_pid = result.stdout.strip()
     if container_pid:
         msg = f"Container with name {name} is already running with id {container_pid}."
         if fail_if_running:
-            fatal(msg)
-        else:
-            logging.info(msg)
+            raise ProcessError(result, msg)
+        logging.info(msg)
     else:
         options = "--detach"
         options += _build_list_opt("-p", inputs.get("ports"))
@@ -82,15 +80,14 @@ def docker_create_network(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_exists = inputs.get("fail_if_exists", True)
 
-    network_id = step.pipe.run_command(
-        f"docker network ls -f name={name} --quiet", step
-    ).stdout.strip()
+    result = step.pipe.run_command(f"docker network ls -f name={name} --quiet", step)
+
+    network_id = result.stdout.strip()
     if network_id:
         msg = f"Network {name} already exists with id {network_id}."
         if fail_if_exists:
-            fatal(msg)
-        else:
-            logging.info(msg)
+            raise ProcessError(result, msg)
+        logging.info(msg)
     else:
         options = "--attachable"
         for opt in ["label"]:

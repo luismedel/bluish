@@ -51,6 +51,12 @@ class VariableExpandError(Exception):
     pass
 
 
+class ProcessError(Exception):
+    def __init__(self, result: "ProcessResult", message: str | None = None):
+        super().__init__(message)
+        self.result = result
+
+
 class ProcessResult(subprocess.CompletedProcess[str]):
     def __init__(self, data: subprocess.CompletedProcess[str] | str):
         if isinstance(data, str):
@@ -204,7 +210,9 @@ class ContextNode:
             except VariableExpandError:
                 if _depth > 1:
                     raise
-                fatal(f"Too much recursion expanding {match.group(1)} in '{value}'")
+                raise RecursionError(
+                    f"Too much recursion expanding {match.group(1)} in '{value}'"
+                )
 
         return self.VAR_REGEX.sub(replace_match, value)
 
@@ -303,7 +311,9 @@ class PipeContext(ContextNode):
             setattr(obj, varname, value)
         return True
 
-    def run_command(self, command: str, context: ContextNode, override_can_fail: bool = False) -> ProcessResult:
+    def run_command(
+        self, command: str, context: ContextNode, override_can_fail: bool = False
+    ) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
         echo_command = (
@@ -328,9 +338,11 @@ class PipeContext(ContextNode):
                 logging.info(f"At @{host}")
             logging.info(decorate_for_log(command))
 
-        exit_on_fail = (context.attrs.can_fail is True) and not override_can_fail
+        raise_on_fail = (context.attrs.can_fail is True) and not override_can_fail
 
-        shell = context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
+        shell = (
+            context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
+        )
         interpreter = SHELLS.get(shell, shell)
         if interpreter:
             heredocstr = f"EOF_{random.randint(1, 1000)}"
@@ -350,24 +362,24 @@ class PipeContext(ContextNode):
         )
 
         if result.failed:
-            msg = f"Command failed with exit status {result.returncode}"
-            if exit_on_fail:
-                fatal(msg)
-            else:
-                logging.warning(msg)
+            if raise_on_fail:
+                raise ProcessError(result)
+            logging.warning(f"Command failed with exit status {result.returncode}")
 
         return result
 
     def can_dispatch(self, context: ContextNode) -> bool:
-        if context.attrs._if == None:
+        if context.attrs._if is None:
             return True
 
         logging.info(f"Testing {context.attrs._if}")
         if not isinstance(context.attrs._if, str):
-            fatal("Condition must be a string")
+            raise ValueError("Condition must be a string")
 
         check_cmd = context.attrs._if.strip()
-        check_result = self.run_command(check_cmd, context, override_can_fail=True).stdout.strip()
+        check_result = self.run_command(
+            check_cmd, context, override_can_fail=True
+        ).stdout.strip()
         if not check_result.endswith("true") and not check_result.endswith("1"):
             return False
         return True
@@ -375,7 +387,7 @@ class PipeContext(ContextNode):
     def dispatch(self) -> ProcessResult | None:
         if not self.can_dispatch(self):
             logging.info("Pipeline skipped")
-            return
+            return None
 
         result: ProcessResult | None = None
         for job in self.jobs.values():
@@ -477,7 +489,7 @@ class StepContext(ContextNode):
         if self.attrs._if:
             logging.info(f"Testing {self.attrs._if}")
             if not isinstance(self.attrs._if, str):
-                fatal("Condition must be a string")
+                raise ValueError("Condition must be a string")
 
             check_cmd = self.attrs._if.strip()
             check_result = self.pipe.run_command(check_cmd, self).stdout.strip()
@@ -489,7 +501,7 @@ class StepContext(ContextNode):
             fqn = self.attrs.uses or "command-runner"
             fn = REGISTERED_ACTIONS.get(fqn)
             if not fn:
-                fatal(f"Unknown action: {fqn}")
+                raise ValueError(f"Unknown action: {fqn}")
 
             logging.info(f"Running action: {fqn}")
             result = fn(self)
