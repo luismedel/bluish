@@ -51,10 +51,10 @@ def main(
         fatal("No pipeline file found.")
 
     conn = Connection(host)
-    conn.echo_commands = not hide_commands
-    conn.echo_output = not hide_output
 
     pipe = PipeContext(yaml.safe_load(yaml_contents), conn)
+    pipe.env["ECHO_COMMANDS"] = not hide_commands
+    pipe.env["ECHO_OUTPUT"] = not hide_output
     ctx.obj = pipe
 
 

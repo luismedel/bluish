@@ -18,9 +18,6 @@ def initialize_commands():
 
 
 def create_pipe(yaml_definition: str) -> PipeContext:
-    conn = Connection()
-    conn.echo_commands = False
-    conn.echo_output = False
     definition = yaml.safe_load(yaml_definition)
     return PipeContext(definition, Connection())
 
@@ -146,10 +143,10 @@ jobs:
             - run: echo 'VALUE == ${{ env.VALUE }}'
 """)
     pipe.dispatch()
-    assert pipe.try_get_value("VALUE") == (True, "1")
-    assert pipe.try_get_value("env.VALUE") == (True, "1")
+    assert pipe.get_value("VALUE") == "1"
+    assert pipe.get_value("env.VALUE") == "1"
     assert pipe.jobs["values"].output == "VALUE == 1"
-    assert pipe.try_get_value("jobs.values.output") == (True, "VALUE == 1")
+    assert pipe.get_value("jobs.values.output") == "VALUE == 1"
 
 
 def test_env_overriding() -> None:
@@ -173,7 +170,6 @@ jobs:
 
 def test_expand_template() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
-        print(temp_file)
         pipe = create_pipe(f"""
 env:
     WORLD: "World!"
@@ -183,9 +179,10 @@ jobs:
         steps:
             - uses: expand-template
               with:
+                  hide_output: true
                   input: "Hello, ${{{{ WORLD }}}}"
                   output_file: {temp_file.name}
     """)
         pipe.dispatch()
         assert pipe.jobs["expand_template"].output == "Hello, World!"
-        assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
+        assert pipe.conn.run(f"cat {temp_file.name}", echo_output=False).stdout.strip() == "Hello, World!"

@@ -71,10 +71,7 @@ class ProcessResult(subprocess.CompletedProcess[str]):
 
 class Connection:
     def __init__(self, host: str | None = None):
-        self._host = host
-        self.echo_commands = True
-        self.echo_output = True
-        self.fail_fast = True
+        self.default_host = host
 
     def _escape_command(self, command: str) -> str:
         return command
@@ -126,28 +123,22 @@ class Connection:
 
         return subprocess.CompletedProcess(command, return_code, stdout, stderr)
 
-    def run(self, command: str, **kwargs: Any) -> ProcessResult:
-        if self.echo_commands:
-            if self._host:
-                logging.info(f"At @{self._host}")
-            logging.info(decorate_for_log(command))
+    def run(
+        self, command: str, echo_output: bool, host: str | None = None
+    ) -> ProcessResult:
+        host = host or self.default_host
 
         final_command: str
-        if self._host:
-            final_command = f'ssh {self._host} -- "{command}"'
+        if host:
+            final_command = f'ssh {host} -- "{command}"'
         else:
             final_command = command
 
-        result = self.capture_subprocess_output(final_command, self.echo_output)
+        result = self.capture_subprocess_output(final_command, echo_output)
 
-        fail = kwargs.pop("fail", self.fail_fast)
-        if fail:
-            if self.echo_output and result.stderr:
-                logging.error(result.stderr)
-            if result.returncode != 0:
-                fatal(f"Command failed with exit status {result.returncode}")
-        elif result.returncode != 0:
-            logging.warn(f"Command failed with exit status {result.returncode}")
+        if echo_output and result.stderr:
+            logging.error(result.stderr)
+
         return ProcessResult(result)
 
 
@@ -233,6 +224,16 @@ class ContextNode:
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         raise NotImplementedError()
 
+    def get_value(self, name: str, default: Any = None) -> str | None:
+        found, value = self.try_get_value(name)
+        return default if not found else value
+
+    def get_bool_value(self, name: str, default: bool = False) -> bool:
+        value = self.get_value(name)
+        if value is None:
+            return default
+        return value.lower() in ("true", "1")
+
     def set_value(self, name: str, value: str) -> bool:
         prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
         if prefix not in ("env", ""):
@@ -261,9 +262,9 @@ class PipeContext(ContextNode):
         self.attrs.ensure_property("jobs", {})
         self.attrs.ensure_property("pipelines", {})
 
-        self.attrs.env = {
-            "WORKING_DIR": self.conn.run("pwd").stdout.strip(),
-            "HOST": self.conn._host or "",
+        self.env = {
+            "WORKING_DIR": self.conn.run("pwd", echo_output=False).stdout.strip(),
+            "HOST": self.conn.default_host or "",
             **self.attrs.env,
         }
 
@@ -301,7 +302,6 @@ class PipeContext(ContextNode):
         return result
 
     def dispatch_job(self, id: str) -> ProcessResult | None:
-        print(self.jobs)
         job = next((v for k, v in self.jobs.items() if k == id), None)
         if not job:
             raise ValueError(f"Job {id} not found")
@@ -415,6 +415,28 @@ class StepContext(ContextNode):
     def run_command(self, command: str) -> ProcessResult:
         command = self.expand_expr(command).strip()
 
+        host = self.get_value("env.HOST")
+        echo_command = (
+            self.get_bool_value("env.ECHO_COMMANDS")
+            if self.attrs.echo_command is None
+            else self.attrs.echo_command
+        )
+        echo_output = (
+            self.get_bool_value("env.ECHO_OUTPUT")
+            if self.attrs.echo_output is None
+            else self.attrs.echo_output
+        )
+        if self.attrs.is_sensitive:
+            echo_command = False
+            echo_output = False
+
+        can_fail = self.attrs.can_fail is True
+
+        if echo_command:
+            if host:
+                logging.info(f"At @{host}")
+            logging.info(decorate_for_log(command))
+
         interpreter = SHELLS.get(self.attrs.shell, self.attrs.shell)
         if interpreter:
             heredocstr = f"EOF_{random.randint(1, 1000)}"
@@ -423,18 +445,20 @@ class StepContext(ContextNode):
 {heredocstr}
 """
 
-        has_wd, working_dir = self.try_get_value("env.WORKING_DIR")
-        if has_wd:
+        working_dir = self.get_value("env.WORKING_DIR")
+        if working_dir:
             command = f'cd "{working_dir}" && {command}'
 
-        if False:
-            lines = command.splitlines()
-            while lines and lines[-1].strip() == "":
-                lines.pop()
+        result = self.job.pipe.conn.run(
+            command,
+            host=host,
+            echo_output=echo_output,
+        )
 
-            command = "\n".join(lines)
+        if result.failed and not can_fail:
+            fatal(f"Command failed with exit status {result.returncode}")
 
-        return self.job.pipe.conn.run(command, fail=self.attrs.can_fail is True)
+        return result
 
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)
