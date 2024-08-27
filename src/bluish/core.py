@@ -15,7 +15,7 @@ REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
 SHELLS = {
     "bash": "bash -euo pipefail",
     "sh": "sh -eu",
-    "python": "python3",
+    "python": "python3 -PqsIEB",
 }
 
 
@@ -135,13 +135,10 @@ class Connection:
     ) -> ProcessResult:
         host = host or self.default_host
 
-        final_command: str
         if host:
-            final_command = f'ssh {host} -- "{command}"'
-        else:
-            final_command = command
+            command = f'ssh {host} -- "{command}"'
 
-        result = self.capture_subprocess_output(final_command, echo_output)
+        result = self.capture_subprocess_output(command, echo_output)
 
         if echo_output and result.stderr:
             logging.error(result.stderr)
@@ -313,7 +310,9 @@ class PipeContext(ContextNode):
             setattr(obj, varname, value)
         return True
 
-    def run_command(self, command: str, context: ContextNode) -> ProcessResult:
+    def run_command(
+        self, command: str, context: ContextNode, shell: str | None = None
+    ) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
         echo_command = (
@@ -342,9 +341,14 @@ class PipeContext(ContextNode):
             context.attrs.can_fail if context.attrs.can_fail is not None else False
         )
 
-        shell = (
-            context.attrs.shell if context.attrs.shell is not None else DEFAULT_SHELL
-        )
+        if shell is None:
+            shell = (
+                context.attrs.shell
+                if context.attrs.shell is not None
+                else DEFAULT_SHELL
+            )
+        assert shell is not None
+
         interpreter = SHELLS.get(shell, shell)
         if interpreter:
             heredocstr = f"EOF_{random.randint(1, 1000)}"
@@ -381,7 +385,7 @@ class PipeContext(ContextNode):
 
         check_cmd = context.attrs._if.strip()
         try:
-            _ = self.run_command(check_cmd, context)
+            _ = self.run_command(check_cmd, context, shell=DEFAULT_SHELL)
             return True
         except ProcessError:
             return False
@@ -486,34 +490,19 @@ class StepContext(ContextNode):
         if self.attrs.name:
             logging.info(f"Processing step: {self.attrs.name}")
 
-        execute_action: bool = True
+        fqn = self.attrs.uses or "command-runner"
+        fn = REGISTERED_ACTIONS.get(fqn)
+        if not fn:
+            raise ValueError(f"Unknown action: {fqn}")
 
-        if self.attrs._if:
-            logging.info(f"Testing {self.attrs._if}")
-            if not isinstance(self.attrs._if, str):
-                raise ValueError("Condition must be a string")
-
-            check_cmd = self.attrs._if.strip()
-            try:
-                _ = self.pipe.run_command(check_cmd, self)
-            except ProcessError:
-                execute_action = False
-
-        if execute_action:
-            fqn = self.attrs.uses or "command-runner"
-            fn = REGISTERED_ACTIONS.get(fqn)
-            if not fn:
-                raise ValueError(f"Unknown action: {fqn}")
-
-            logging.info(f"Running action: {fqn}")
-            result = fn(self)
-            if self.attrs.id:
-                self.set_value(
-                    f"jobs.{self.job.id}steps.{self.attrs.id}.output",
-                    result.stdout.strip(),
-                )
-            return result
-        return None
+        logging.info(f"Running action: {fqn}")
+        result = fn(self)
+        if self.attrs.id:
+            self.set_value(
+                f"jobs.{self.job.id}steps.{self.attrs.id}.output",
+                result.stdout.strip(),
+            )
+        return result
 
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         found, value = self.try_get_env(name)

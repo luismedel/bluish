@@ -67,9 +67,8 @@ jobs:
     job4:
         name: "Job 4"
         steps:
-            - shell: python
-              if: |
-                exit(0)
+            - if: "true && echo 1"
+              shell: python
               run: |
                 print("This is Job 4")
 
@@ -77,9 +76,8 @@ jobs:
     job5:
         name: "Job 5"
         steps:
-            - shell: python
-              if: |
-                exit(1)
+            - if: "false && echo 1"
+              shell: python
               run: |
                 print("This will not be printed")
 """)
