@@ -130,8 +130,6 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
     if not no_deps:
         gen_dependencies(job)
 
-    print(deps)
-
     try:
         dispatch_job(job)
     except ProcessError as e:

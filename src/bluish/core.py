@@ -7,6 +7,8 @@ import sys
 from functools import wraps
 from typing import Any, Callable, Dict, Never, Optional, TypeVar
 
+from dotenv import dotenv_values
+
 from bluish.utils import decorate_for_log
 
 REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
@@ -278,6 +280,7 @@ class PipeContext(ContextNode):
 
         self.env = {
             **os.environ,
+            **dotenv_values(".env"),
             "WORKING_DIR": self.conn.run("pwd", echo_output=False).stdout.strip(),
             "HOST": self.conn.default_host or "",
             **self.attrs.env,
