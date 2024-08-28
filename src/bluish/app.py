@@ -137,8 +137,8 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
             fatal(str(e), e.result.returncode)
         else:
             fatal(str(e))
-    except Exception as e:
-        fatal(str(e))
+    except Exception:
+        raise
 
 
 if __name__ == "__main__":
