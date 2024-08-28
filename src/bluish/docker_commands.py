@@ -55,15 +55,15 @@ def docker_build(step: StepContext) -> ProcessResult:
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.attrs._with["name"]
-    return docker_ps(step, name=name)
+    return ProcessResult(docker_ps(step, name=name).stdout.strip())
 
 
 @action("docker/run", required_inputs=["image", "name"])
 def docker_run(step: StepContext) -> ProcessResult:
     inputs = step.attrs._with
 
-    image = inputs["image"]
-    name = inputs["name"]
+    image = step.expand_expr(inputs["image"])
+    name = step.expand_expr(inputs["name"])
     fail_if_running = inputs.get("fail_if_running", True)
 
     container_pid = docker_ps(step, name=name).stdout.strip()
@@ -72,6 +72,7 @@ def docker_run(step: StepContext) -> ProcessResult:
         if fail_if_running:
             raise ProcessError(None, msg)
         logging.info(msg)
+        return ProcessResult(container_pid)
 
     options = f"--name {name} --detach"
     options += _build_list_opt("-p", inputs.get("ports"))

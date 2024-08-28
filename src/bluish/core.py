@@ -575,7 +575,6 @@ def action(
                     raise RequiredInputError(required_inputs[0])
 
                 for param in required_inputs:
-                    print(param, inputs)
                     if not exists(param, inputs):
                         raise RequiredInputError(param)
 
