@@ -480,7 +480,7 @@ class StepContext(ContextNode):
         self.output: str = ""
 
         self.attrs.ensure_property("name", "")
-        self.attrs.ensure_property("uses", "command-runner")
+        self.attrs.ensure_property("uses", "default-action")
         self.attrs.ensure_property("if", None)
         self.attrs.ensure_property("can_fail", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
@@ -494,7 +494,7 @@ class StepContext(ContextNode):
         if self.attrs.name:
             logging.info(f"Processing step: {self.attrs.name}")
 
-        fqn = self.attrs.uses or "command-runner"
+        fqn = self.attrs.uses or "default-action"
         fn = REGISTERED_ACTIONS.get(fqn)
         if not fn:
             raise ValueError(f"Unknown action: {fqn}")
@@ -570,6 +570,7 @@ def action(
                     raise RequiredInputError(required_inputs[0])
 
                 for param in required_inputs:
+                    print(param, inputs)
                     if not exists(param, inputs):
                         raise RequiredInputError(param)
 
@@ -587,6 +588,7 @@ def init_logging(level_name: str) -> None:
 
 
 def init_commands() -> None:
+    from bluish.core_commands import expand_template, generic_run  # noqa
     from bluish.docker_commands import (
         docker_build,  # noqa
         docker_create_network,  # noqa
@@ -595,6 +597,5 @@ def init_commands() -> None:
         docker_run,  # noqa
         docker_stop,  # noqa
     )
-    from bluish.generic_commands import expand_template, generic_run  # noqa
 
     pass

@@ -7,6 +7,8 @@ from bluish.core import ProcessError, ProcessResult, StepContext, action
 def _build_list_opt(opt: str, items: list[str] | None) -> str:
     if not items:
         return ""
+    if isinstance(items, str):
+        items = [items]
     result = " ".join(f"{opt} {o}" for o in items)
     return f" {result}"
 

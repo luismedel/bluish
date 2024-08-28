@@ -1,11 +1,21 @@
+import logging
 import random
 
 from bluish.core import ProcessResult, StepContext, action
 
 
-@action("command-runner", required_attrs=["run"])
+@action("default-action", required_attrs=["run|set"])
 def generic_run(step: StepContext) -> ProcessResult:
-    return step.pipe.run_command(step.attrs.run, step)
+    variables = step.attrs._with.get("set")
+    if variables:
+        for key, value in variables.items():
+            logging.info(f"Updating {key}...")
+            step.pipe.set_value(key, step.expand_expr(value))
+
+    if step.attrs.run:
+        return step.pipe.run_command(step.attrs.run, step)
+
+    return ProcessResult("")    
 
 
 @action("expand-template", required_inputs=["input|input_file", "output_file"])
