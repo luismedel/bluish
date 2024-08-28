@@ -11,6 +11,8 @@ from dotenv import dotenv_values
 
 from bluish.utils import decorate_for_log
 
+DEFAULT_ACTION = "core/default-action"
+
 REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
 
 
@@ -30,6 +32,9 @@ def fatal(message: str, exit_code: int = 1) -> Never:
 
 
 def traverse_context(obj: Any, path: str) -> tuple[bool, Any]:
+    if not path:
+        return (True, obj)
+
     parts = path.split(".")
     while parts:
         key = parts.pop(0)
@@ -302,7 +307,7 @@ class PipeContext(ContextNode):
             return True
 
         obj = self
-        path, varname = name.rsplit(".", maxsplit=1)
+        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
         found, obj = traverse_context(self, path)
         if not found:
             raise ValueError(f"Variable {name} not found")
@@ -459,7 +464,7 @@ class JobContext(ContextNode):
         if prefix != "steps":
             return self.pipe.set_value(name, value)
 
-        path, varname = name.rsplit(".", maxsplit=1)
+        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
         found, obj = traverse_context(self, path)
         if not found:
             raise ValueError(f"Variable {name} not found")
@@ -480,7 +485,7 @@ class StepContext(ContextNode):
         self.output: str = ""
 
         self.attrs.ensure_property("name", "")
-        self.attrs.ensure_property("uses", "default-action")
+        self.attrs.ensure_property("uses", DEFAULT_ACTION)
         self.attrs.ensure_property("if", None)
         self.attrs.ensure_property("can_fail", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
@@ -494,12 +499,12 @@ class StepContext(ContextNode):
         if self.attrs.name:
             logging.info(f"Processing step: {self.attrs.name}")
 
-        fqn = self.attrs.uses or "default-action"
+        fqn = self.attrs.uses or DEFAULT_ACTION
         fn = REGISTERED_ACTIONS.get(fqn)
         if not fn:
             raise ValueError(f"Unknown action: {fqn}")
 
-        logging.info(f"Running action: {fqn}")
+        logging.info(f"Running {fqn}")
         result = fn(self)
         if self.attrs.id:
             self.set_value(

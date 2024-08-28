@@ -4,21 +4,22 @@ import random
 from bluish.core import ProcessResult, StepContext, action
 
 
-@action("default-action", required_attrs=["run|set"])
+@action("core/default-action", required_attrs=["run|set"])
 def generic_run(step: StepContext) -> ProcessResult:
-    variables = step.attrs._with.get("set")
+    variables = step.attrs.set
     if variables:
         for key, value in variables.items():
-            logging.info(f"Updating {key}...")
-            step.pipe.set_value(key, step.expand_expr(value))
+            value = step.expand_expr(value)
+            logging.debug(f"Setting {key} = {value}")
+            step.pipe.set_value(key, value)
 
     if step.attrs.run:
         return step.pipe.run_command(step.attrs.run, step)
 
-    return ProcessResult("")    
+    return ProcessResult("")
 
 
-@action("expand-template", required_inputs=["input|input_file", "output_file"])
+@action("core/expand-template", required_inputs=["input|input_file", "output_file"])
 def expand_template(step: StepContext) -> ProcessResult:
     inputs = step.attrs._with
 
