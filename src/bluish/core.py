@@ -421,9 +421,10 @@ class JobContext(ContextNode):
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("can_fail", False)
 
-        self.steps: list[StepContext] = [
-            StepContext(self, step) for step in self.attrs.steps
-        ]
+        self.steps: dict[str, StepContext] = {}
+        for i, step in enumerate(self.attrs.steps):
+            key = step["id"] if "id" in step else f"steps_{i}"
+            self.steps[key] = StepContext(self, step)
 
     def dispatch(self) -> ProcessResult | None:
         if not self.pipe.can_dispatch(self):
@@ -431,7 +432,7 @@ class JobContext(ContextNode):
             return None
 
         result: ProcessResult | None = None
-        for step in self.steps:
+        for step in self.steps.values():
             result = step.dispatch()
 
         if result:
@@ -502,7 +503,7 @@ class StepContext(ContextNode):
         result = fn(self)
         if self.attrs.id:
             self.set_value(
-                f"jobs.{self.job.id}steps.{self.attrs.id}.output",
+                f"jobs.{self.job.id}.steps.{self.attrs.id}.output",
                 result.stdout.strip(),
             )
         return result
@@ -587,13 +588,13 @@ def init_logging(level_name: str) -> None:
 
 def init_commands() -> None:
     from bluish.docker_commands import (
-        docker_build,
-        docker_create_network,
-        docker_run,
-        docker_ps,
-        docker_exec,
-        docker_stop,
-    )  # noqa
+        docker_build,  # noqa
+        docker_create_network,  # noqa
+        docker_exec,  # noqa
+        docker_ps,  # noqa
+        docker_run,  # noqa
+        docker_stop,  # noqa
+    )
     from bluish.generic_commands import expand_template, generic_run  # noqa
 
     pass
