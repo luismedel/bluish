@@ -55,7 +55,7 @@ class VariableExpandError(Exception):
 
 
 class ProcessError(Exception):
-    def __init__(self, result: "ProcessResult", message: str | None = None):
+    def __init__(self, result: Optional["ProcessResult"], message: str | None = None):
         super().__init__(message)
         self.result = result
 
@@ -586,7 +586,14 @@ def init_logging(level_name: str) -> None:
 
 
 def init_commands() -> None:
-    from bluish.docker_commands import docker_build, docker_create_network, docker_run  # noqa
+    from bluish.docker_commands import (
+        docker_build,
+        docker_create_network,
+        docker_run,
+        docker_ps,
+        docker_exec,
+        docker_stop,
+    )  # noqa
     from bluish.generic_commands import expand_template, generic_run  # noqa
 
     pass

@@ -133,7 +133,10 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
     try:
         dispatch_job(job)
     except ProcessError as e:
-        fatal(str(e), e.result.returncode)
+        if e.result:
+            fatal(str(e), e.result.returncode)
+        else:
+            fatal(str(e))
     except Exception as e:
         fatal(str(e))
 
