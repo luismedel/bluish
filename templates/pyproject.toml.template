@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bluish"
-version = "${{ bluish_version }}"
+version = "${{ PROJECT_VERSION }}"
 authors = [
   { name="Luis Medel", email="luis@luismedel.com" },
 ]
