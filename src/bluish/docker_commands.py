@@ -1,4 +1,5 @@
 import logging
+import subprocess
 
 from bluish.core import ProcessError, ProcessResult, StepContext, action
 
@@ -20,6 +21,22 @@ def _build_flag(flag: str, value: bool | None) -> str:
     return "" if not value else f" {flag}"
 
 
+class EmptyPIDError(Exception):
+    pass
+
+
+def run_and_get_pid(command: str, step: StepContext) -> str:
+    result = step.pipe.run_command(command, step)
+    return result.stdout.strip()
+
+
+def docker_ps(
+    step: StepContext, name: str | None = None, pid: str | None = None
+) -> ProcessResult:
+    filter = f"name={name}" if name else f"id={pid}"
+    return step.pipe.run_command(f"docker ps -f {filter} --all --quiet", step)
+
+
 @action("docker/build", required_inputs=["tags"])
 def docker_build(step: StepContext) -> ProcessResult:
     inputs = step.attrs._with
@@ -36,7 +53,7 @@ def docker_build(step: StepContext) -> ProcessResult:
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.attrs._with["name"]
-    return step.pipe.run_command(f"docker ps -f name={name} --quiet", step)
+    return docker_ps(step, name=name)
 
 
 @action("docker/run", required_inputs=["image", "name"])
@@ -47,31 +64,107 @@ def docker_run(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_running = inputs.get("fail_if_running", True)
 
-    result = step.pipe.run_command(f"docker ps -f name={name} --quiet", step)
-    container_pid = result.stdout.strip()
+    container_pid = docker_ps(step, name=name).stdout.strip()
     if container_pid:
         msg = f"Container with name {name} is already running with id {container_pid}."
         if fail_if_running:
-            raise ProcessError(result, msg)
+            raise ProcessError(None, msg)
         logging.info(msg)
-    else:
-        options = "--detach"
-        options += _build_list_opt("-p", inputs.get("ports"))
-        options += _build_list_opt("-v", inputs.get("volumes"))
-        options += _build_list_opt("-e", inputs.get("env"))
-        options += _build_list_opt("--env-file", inputs.get("env_file"))
-        options += _build_flag("--rm", inputs.get("remove_on_exit"))
 
-        for opt in ["name", "network", "label", "pull", "user"]:
+    options = f"--name {name} --detach"
+    options += _build_list_opt("-p", inputs.get("ports"))
+    options += _build_list_opt("-v", inputs.get("volumes"))
+    options += _build_list_opt("-e", inputs.get("env"))
+    options += _build_list_opt("--env-file", inputs.get("env_file"))
+    options += _build_flag("--rm", inputs.get("remove"))
+
+    for opt in ["network", "label", "pull", "user"]:
+        options += _build_opt(f"--{opt}", inputs.get(opt))
+    for flag in ["quiet"]:
+        options += _build_flag(f"--{flag}", inputs.get(flag))
+
+    container_pid = run_and_get_pid(f"docker run {options} {image}", step)
+    return ProcessResult(container_pid)
+
+
+@action("docker/stop", required_inputs=["name|pid"])
+def docker_stop(step: StepContext) -> ProcessResult:
+    inputs = step.attrs._with
+
+    name = inputs.get("name")
+    container_pid = inputs.get("pid")
+    input_attr = f"name {name}" if name else f"pid {container_pid}"
+    remove = inputs.get("remove", False)
+    issue_stop = True
+
+    container_pid = docker_ps(step, name=name, pid=container_pid).stdout.strip()
+    if not container_pid:
+        msg = f"Can't find a running container with {input_attr}."
+        # If we need to remove the container, we can't stop here
+        if not remove:
+            raise ProcessError(None, msg)
+        issue_stop = False
+        logging.warning(msg)
+
+    if issue_stop:
+        options = ""
+        for opt in ["signal", "time"]:
             options += _build_opt(f"--{opt}", inputs.get(opt))
-        for flag in ["quiet"]:
-            options += _build_flag(f"--{flag}", inputs.get(flag))
 
-        container_pid = step.pipe.run_command(
-            f"docker run {options} {image}", step
-        ).stdout.strip()
+        if not run_and_get_pid(
+            f"docker container stop {options} {container_pid}", step
+        ):
+            logging.warning(f"Failed to stop container with {input_attr}.")
+
+    if not run_and_get_pid(f"docker container rm {options} {container_pid}", step):
+        logging.warning(f"Failed to remove container with {input_attr}.")
 
     return ProcessResult(container_pid)
+
+
+@action("docker/exec", required_inputs=["name|pid", "run"])
+def docker_exec(step: StepContext) -> ProcessResult:
+    inputs = step.attrs._with
+
+    name = inputs.get("name")
+    container_pid = inputs.get("pid")
+    command = inputs["run"]
+    input_attr = f"name {name}" if name else f"pid {container_pid}"
+
+    container_pid = docker_ps(step, name=name, pid=container_pid).stdout.strip()
+    if not container_pid:
+        raise ProcessError(None, f"Can't find a running container with {input_attr}.")
+
+    options = ""
+    options += _build_list_opt("-e", inputs.get("env"))
+    options += _build_list_opt("--env-file", inputs.get("env_file"))
+
+    for opt in ["workdir"]:
+        options += _build_opt(f"--{opt}", inputs.get(opt))
+
+    output = ""
+
+    i = 0
+    command_lines = command.splitlines()
+    while i < len(command_lines):
+        line = command_lines[i].strip()
+        while line.endswith("\\"):
+            i += 1
+            line = line[:-1] + command_lines[i].strip()
+        i += 1
+
+        result = step.pipe.run_command(
+            f"docker exec {options} {container_pid} {line}", step
+        )
+        output += result.stdout
+        if result.returncode != 0:
+            # TODO: This is a hack to get the command that failed
+            cp = subprocess.CompletedProcess(
+                command, result.returncode, output, result.stderr
+            )
+            return ProcessResult(cp)
+
+    return ProcessResult(output)
 
 
 @action("docker/create-network", required_inputs=["name"])
