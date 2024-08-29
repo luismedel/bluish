@@ -88,13 +88,9 @@ class Connection:
         self.default_host = host
 
     def _escape_command(self, command: str) -> str:
-        return command
         return (
-            command.replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
+            command.replace("\\", r"\\\\")
             .replace("$", "\\$")
-            .replace("`", "\\`")
         )
 
     def _escape_quotes(self, command: str) -> str:
@@ -141,6 +137,8 @@ class Connection:
         self, command: str, echo_output: bool, host: str | None = None
     ) -> ProcessResult:
         host = host or self.default_host
+        
+        command = self._escape_command(command)
 
         if host:
             command = f'ssh {host} -- "{command}"'
