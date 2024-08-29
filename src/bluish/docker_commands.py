@@ -97,17 +97,20 @@ def docker_stop(step: StepContext) -> ProcessResult:
     name = inputs.get("name")
     container_pid = inputs.get("pid")
     input_attr = f"name {name}" if name else f"pid {container_pid}"
+    fail_if_not_found = inputs.get("fail_if_not_found", True)
     remove = inputs.get("remove", False)
     issue_stop = True
 
     container_pid = docker_ps(step, name=name, pid=container_pid).stdout.strip()
     if not container_pid:
         msg = f"Can't find a running container with {input_attr}."
-        # If we need to remove the container, we can't stop here
-        if not remove:
+        if fail_if_not_found:
             raise ProcessError(None, msg)
         issue_stop = False
         logging.warning(msg)
+        # If don't need to remove the container, we can stop here
+        if not remove:
+            return ProcessResult("")
 
     if issue_stop:
         options = ""
