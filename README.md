@@ -37,7 +37,7 @@ jobs:
           ruff check src/ test/
           echo ""
           mypy --version
-          mypy --ignore-missing-imports --python-version=${{ env.PYTHON_VERSION }} src/ test/
+          mypy --ignore-missing-imports --python-version=${{ PYTHON_VERSION }} src/ test/
 
   lint-fix:
     name: Reformats the code using ruff
