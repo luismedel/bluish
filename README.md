@@ -2,10 +2,12 @@
 
 The CI/CD/automation tool I use for my personal projects.
 
+Why use a rock-solid tool when you can code your own crappy Make alternative?
+
 ## Features
 
 - YAML-based declarative approach (not that I love YAML, but...)
-- Githubactions-esque philosphy, but way simpler.
+- Githubactions-esque philosphy, but way simpler. In fact, Bluish is nearer to Make than to GA.
 - Simple as fuck. I only add new actions whenever I need them.
 
 ## Example
@@ -23,7 +25,7 @@ Observe we use the form `${{ PYTHON_VERSION }}` to expand the `PYTHON_VERSION` e
 Note that the similarity with other tools like Github Actions is very superficial.
 
 ```yaml
-env:
+var:
   PYTHON_VERSION: "3.11"
 
 jobs:
@@ -103,6 +105,14 @@ You can pass an arbitrary path to Bluish using the `--file` option:
 $ bluish --file /path/to/file.yaml run test
 ```
 
+By default, Bluis will run the jobs in your local system. In order to execute the jobs on a remote system use the `--host` option. For example, if you have a job called `deploy` you want to un on a remote host:
+
+```sh
+$ bluish --host <remote-host> run deploy
+```
+
+Bluish will connect via `ssh` to the remote host and will perform all the steps remotely. Note that there's no way right now to customize the connection. You should already be able to connect to the host via `ssh` without interactive login (ie: use public key authentication).
+
 ## Key concepts
 
 Bluish operates with two elements: jobs and steps.
@@ -176,9 +186,7 @@ Inputs:
             console.log(b);
   ```
 
-
-
-### expand-template
+### core/expand-template
 
 Expands all the values in a template and outputs the resulting string.
 
@@ -201,6 +209,11 @@ jobs:
     name: Updates Nginx config
     steps:
       - uses: expand-template
+        var:
+          PROCESSES: 2
+          USER: www-data
+          SERVER: localhost
+          ADDR: "127.0.0.1:80"
         with:
           input_file: ./templates/nginx.conf.template
           output_file: /usr/local/nginx/conf/nginx.conf
@@ -214,7 +227,7 @@ jobs:
     name: Updates Nginx config
     steps:
       - uses: expand-template
-        env:
+        var:
           PROCESSES: 2
           USER: www-data
           SERVER: localhost
@@ -234,6 +247,27 @@ jobs:
           output_file: /usr/local/nginx/conf/nginx.conf
 ```
 
+### docker/build
+
+TBD
+
+### docker/run
+
+TBD
+
+### docker/stop
+
+TBD
+
+### docker/get-pid
+
+TBD
+
+### docker/create-network
+
+TBD
+
+(to be finished)
 
 ## License
 
