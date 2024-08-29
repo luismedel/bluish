@@ -55,8 +55,6 @@ def main(
     conn = Connection(host)
 
     pipe = PipeContext(yaml.safe_load(yaml_contents), conn)
-    pipe.env["ECHO_COMMANDS"] = not hide_commands
-    pipe.env["ECHO_OUTPUT"] = not hide_output
     ctx.obj = pipe
 
 
@@ -105,6 +103,8 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
     deps: dict[str, list[JobContext]] = {}
 
     def gen_dependencies(job: JobContext) -> None:
+        assert job.id is not None
+
         if job.id in deps:
             return
         deps[job.id] = []
@@ -116,6 +116,8 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
             gen_dependencies(dep_job)
 
     def dispatch_job(job: JobContext):
+        assert job.id is not None
+
         if job.id in executed_jobs:
             return
         executed_jobs.add(job.id)

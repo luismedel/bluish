@@ -10,7 +10,7 @@ def generic_run(step: StepContext) -> ProcessResult:
 
     if step.attrs.run:
         result = step.pipe.run_command(step.attrs.run, step)
-        # HACK to allow using the output in the 'set' section  
+        # HACK to allow using the output in the 'set' section
         step.output = result.stdout.strip()
 
     if step.attrs.set:
@@ -41,6 +41,6 @@ def expand_template(step: StepContext) -> ProcessResult:
         b64 = base64.b64encode(expanded_content.encode()).decode()
         step.pipe.run_command(
             f'echo "{b64}" | base64 -di - > {output_file}',
-            step,
+            step, echo_command=False, echo_output=False
         )
     return ProcessResult(expanded_content)

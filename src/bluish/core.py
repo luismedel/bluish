@@ -1,6 +1,6 @@
+import base64
 import logging
 import os
-import random
 import re
 import subprocess
 import sys
@@ -49,7 +49,7 @@ def get_obj_attr(obj: Any, name: str) -> tuple[bool, Any]:
 def traverse_obj(obj: Any, path: str) -> tuple[bool, Any]:
     if not path:
         return (True, obj)
-    
+
     parent = obj.parent
 
     parts = path.split(".")
@@ -97,10 +97,7 @@ class Connection:
         self.default_host = host
 
     def _escape_command(self, command: str) -> str:
-        return (
-            command.replace("\\", r"\\\\")
-            .replace("$", "\\$")
-        )
+        return command.replace("\\", r"\\\\").replace("$", "\\$")
 
     def _escape_quotes(self, command: str) -> str:
         return command.replace('"', '\\"')
@@ -146,7 +143,7 @@ class Connection:
         self, command: str, echo_output: bool, host: str | None = None
     ) -> ProcessResult:
         host = host or self.default_host
-        
+
         command = self._escape_command(command)
 
         if host:
@@ -195,7 +192,7 @@ class ContextNode:
     def __init__(self, parent: Optional["ContextNode"], definition: dict[str, Any]):
         self.parent = parent
         self.attrs = DictAttrs(definition)
-        
+
         self.attrs.ensure_property("env", {})
         self.attrs.ensure_property("var", {})
 
@@ -235,17 +232,17 @@ class ContextNode:
                 )
 
         return self.VAR_REGEX.sub(replace_match, value)
-        
+
     def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
         """
         Tries to get a value from the context.
         - If the name is not a fully qualified name (fqn), it will try to get it from the vars/env properties.
         - If the name is a fqn, it will try to traverse the contex to find the value.
         """
-        
+
         def try_get_from_dict(dict_name: str, varname: str) -> tuple[bool, str]:
             """Tries to get a variable from a dict property (env or var) up into the parent chain"""
-            obj = self
+            obj: ContextNode | None = self
             while obj is not None:
                 _dict: dict[str, Any] | None
                 _dict = getattr(obj, dict_name, None)
@@ -334,24 +331,31 @@ class PipeContext(ContextNode):
         self.var = dict(self.attrs.var)
 
     def run_command(
-        self, command: str, context: ContextNode, shell: str | None = None
+        self, command: str, context: ContextNode, shell: str | None = None,
+        echo_command: bool | None = None, echo_output: bool | None = None
     ) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
-        echo_command = (
-            self.get_inherited_attr("echo_commands", True)
-            if self.attrs.echo_command is None
-            else self.attrs.echo_command
-        )
-        echo_output = (
-            context.get_inherited_attr("echo_output", True)
-            if self.attrs.echo_output is None
-            else self.attrs.echo_output
-        )
+        if echo_command is None:
+            echo_command = (
+                self.get_inherited_attr("echo_commands", True)
+                if self.attrs.echo_command is None
+                else self.attrs.echo_command
+            )
+
+        if echo_output is None:
+            echo_output = (
+                context.get_inherited_attr("echo_output", True)
+                if self.attrs.echo_output is None
+                else self.attrs.echo_output
+            )
 
         if context.get_inherited_attr("is_sensitive", False):
             echo_command = False
             echo_output = False
+        
+        assert echo_command is not None
+        assert echo_output is not None
 
         host = context.get_value("env.HOST", self.conn.default_host)
 
@@ -374,11 +378,8 @@ class PipeContext(ContextNode):
 
         interpreter = SHELLS.get(shell, shell)
         if interpreter:
-            heredocstr = f"EOF_{random.randint(1, 1000)}"
-            command = f"""cat <<{heredocstr} | {interpreter}
-{command}
-{heredocstr}
-"""
+            b64 = base64.b64encode(command.encode()).decode()
+            command = f"echo {b64} | base64 -di - | {interpreter}"
 
         working_dir = self.get_value("env.WORKING_DIR")
         if working_dir:
@@ -493,7 +494,8 @@ class StepContext(ContextNode):
         logging.info(f"Running {fqn}")
         result = fn(self)
         if self.attrs.id:
-            self.job.set_value(f"steps.{self.attrs.id}.output",
+            self.job.set_value(
+                f"steps.{self.attrs.id}.output",
                 result.stdout.strip(),
             )
         return result
