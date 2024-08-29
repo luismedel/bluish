@@ -1,28 +1,31 @@
 import base64
 import logging
-import random
 
 from bluish.core import ProcessResult, StepContext, action
 
 
 @action("core/default-action", required_attrs=["run|set"])
 def generic_run(step: StepContext) -> ProcessResult:
-    variables = step.attrs.set
-    if variables:
+    result: ProcessResult | None = None
+
+    if step.attrs.run:
+        result = step.pipe.run_command(step.attrs.run, step)
+        # HACK to allow using the output in the 'set' section  
+        step.output = result.stdout.strip()
+
+    if step.attrs.set:
+        variables = step.attrs.set
         for key, value in variables.items():
             value = step.expand_expr(value)
             logging.debug(f"Setting {key} = {value}")
-            step.pipe.set_value(key, value)
+            step.set_value(key, value)
 
-    if step.attrs.run:
-        return step.pipe.run_command(step.attrs.run, step)
-
-    return ProcessResult("")
+    return result or ProcessResult("")
 
 
 @action("core/expand-template", required_inputs=["input|input_file", "output_file"])
 def expand_template(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
 
     template_content: str
     if "input_file" in inputs:

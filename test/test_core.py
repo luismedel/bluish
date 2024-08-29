@@ -166,9 +166,9 @@ env:
 jobs:
     mandatory_inputs:
         steps:
-            - uses: expand-template
+            - uses: core/expand-template
               with:
-                  - input: "Hello, ${{{{ env.WORLD }}}}"
+                input: "Hello, ${{{{ env.WORLD }}}}"
 """)
     try:
         pipe.dispatch()
@@ -217,13 +217,52 @@ jobs:
     values:
         name: Test values
         steps:
-            - run: echo 'VALUE == ${{ env.VALUE }}'
+            - id: step-1
+              run: echo 'VALUE == ${{ env.VALUE }}'
+              set:
+                jobs.values.var.VALUE: 99  # Will be overridden by the next line
+                job.var.VALUE: 1
 """)
     pipe.dispatch()
     assert pipe.get_value("VALUE") == "1"
     assert pipe.get_value("env.VALUE") == "1"
+    assert pipe.get_value("var.VALUE") is None
+
     assert pipe.jobs["values"].output == "VALUE == 1"
     assert pipe.get_value("jobs.values.output") == "VALUE == 1"
+
+    assert pipe.get_value("jobs.values.var.VALUE") == "1"
+    assert pipe.jobs["values"].get_value("var.VALUE") == "1"
+    assert pipe.jobs["values"].var["VALUE"] == "1"
+    assert pipe.jobs["values"].steps["step-1"].get_value("VALUE") == "1"
+    assert pipe.jobs["values"].steps["step-1"].get_value("job.var.VALUE") == "1"
+
+
+def test_set() -> None:
+    pipe = create_pipe("""
+env:
+    VALUE: 1
+
+jobs:
+    set:
+        name: Test set
+        steps:
+            - id: echo-step
+              run: |
+                echo 'VALUE == ${{ env.VALUE }}'
+              env:
+                  VALUE: 2
+            - set:
+                  job.var.TEMP: 42
+                  var.STEP_SCOPE: 1
+                  pipe.var.PIPE_SCOPE: 1
+""")
+    pipe.dispatch()
+    assert pipe.jobs["set"].steps["echo-step"].output == "VALUE == 2"
+    assert pipe.get_value("VALUE") == "1"
+    assert pipe.get_value("jobs.set.var.TEMP") == "42"
+    assert pipe.get_value("STEP_SCOPE") is None
+    assert pipe.get_value("PIPE_SCOPE") == "1"
 
 
 def test_env_overriding() -> None:
@@ -254,7 +293,7 @@ env:
 jobs:
     expand_template:
         steps:
-            - uses: expand-template
+            - uses: core/expand-template
               with:
                   hide_output: true
                   input: "Hello, ${{{{ WORLD }}}}"

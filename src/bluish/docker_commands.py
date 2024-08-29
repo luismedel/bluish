@@ -41,7 +41,7 @@ def docker_ps(
 
 @action("docker/build", required_inputs=["tags"])
 def docker_build(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
 
     dockerfile = inputs.get("dockerfile", "Dockerfile")
 
@@ -54,13 +54,13 @@ def docker_build(step: StepContext) -> ProcessResult:
 
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
-    name = step.attrs._with["name"]
+    name = step.inputs["name"]
     return ProcessResult(docker_ps(step, name=name).stdout.strip())
 
 
 @action("docker/run", required_inputs=["image", "name"])
 def docker_run(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
 
     image = step.expand_expr(inputs["image"])
     name = step.expand_expr(inputs["name"])
@@ -92,7 +92,7 @@ def docker_run(step: StepContext) -> ProcessResult:
 
 @action("docker/stop", required_inputs=["name|pid"])
 def docker_stop(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
 
     name = inputs.get("name")
     container_pid = inputs.get("pid")
@@ -130,7 +130,7 @@ def docker_stop(step: StepContext) -> ProcessResult:
 
 @action("docker/exec", required_inputs=["name|pid", "run"])
 def docker_exec(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
 
     name = inputs.get("name")
     container_pid = inputs.get("pid")
@@ -175,7 +175,8 @@ def docker_exec(step: StepContext) -> ProcessResult:
 
 @action("docker/create-network", required_inputs=["name"])
 def docker_create_network(step: StepContext) -> ProcessResult:
-    inputs = step.attrs._with
+    inputs = step.inputs
+
     name = inputs["name"]
     fail_if_exists = inputs.get("fail_if_exists", True)
 

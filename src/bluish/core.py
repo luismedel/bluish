@@ -31,25 +31,34 @@ def fatal(message: str, exit_code: int = 1) -> Never:
     exit(exit_code)
 
 
-def traverse_context(obj: Any, path: str) -> tuple[bool, Any]:
+def set_obj_attr(obj: Any, name: str, value: Any) -> None:
+    if isinstance(obj, dict):
+        obj[name] = value
+    else:
+        setattr(obj, name, value)
+
+
+def get_obj_attr(obj: Any, name: str) -> tuple[bool, Any]:
+    if isinstance(obj, dict) and name in obj:
+        return (True, obj[name])
+    elif hasattr(obj, name):
+        return (True, getattr(obj, name))
+    return (False, None)
+
+
+def traverse_obj(obj: Any, path: str) -> tuple[bool, Any]:
     if not path:
         return (True, obj)
+    
+    parent = obj.parent
 
     parts = path.split(".")
     while parts:
         key = parts.pop(0)
-        if isinstance(obj, dict):
-            obj = obj.get(key)
-        elif hasattr(obj, key):
-            obj = getattr(obj, key)
-        elif hasattr(obj.attrs, key):
-            obj = getattr(obj.attrs, key)
-        elif obj.attrs._with and key in obj.attrs._with:
-            obj = obj.attrs[key]
-        else:
-            return (False, "")
-
-        if obj is None:
+        found, obj = get_obj_attr(obj, key)
+        if not found:
+            if parent:
+                return traverse_obj(parent, path)
             return (False, "")
 
     return (True, obj)
@@ -186,9 +195,14 @@ class ContextNode:
     def __init__(self, parent: Optional["ContextNode"], definition: dict[str, Any]):
         self.parent = parent
         self.attrs = DictAttrs(definition)
+        
         self.attrs.ensure_property("env", {})
+        self.attrs.ensure_property("var", {})
 
-        self.env: dict[str, Any] = dict(self.attrs.env)
+        self.env = dict(self.attrs.env)
+        self.var = dict(self.attrs.env)
+
+        self.id: str | None = self.attrs.id
 
     def expand_expr(self, value: Any, _depth: int = 1) -> str:
         MAX_EXPAND_RECURSION = 5
@@ -196,7 +210,10 @@ class ContextNode:
         if value is None:
             return ""
 
-        if (not isinstance(value, str)) or ("$" not in value):
+        if not isinstance(value, str):
+            return str(value)
+
+        if "$" not in value:
             return value
 
         if _depth == MAX_EXPAND_RECURSION:
@@ -218,22 +235,47 @@ class ContextNode:
                 )
 
         return self.VAR_REGEX.sub(replace_match, value)
-
-    def try_get_env(self, name: str) -> tuple[bool, str]:
-        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
-        if prefix not in ("env", ""):
+        
+    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
+        """
+        Tries to get a value from the context.
+        - If the name is not a fully qualified name (fqn), it will try to get it from the vars/env properties.
+        - If the name is a fqn, it will try to traverse the contex to find the value.
+        """
+        
+        def try_get_from_dict(dict_name: str, varname: str) -> tuple[bool, str]:
+            """Tries to get a variable from a dict property (env or var) up into the parent chain"""
+            obj = self
+            while obj is not None:
+                _dict: dict[str, Any] | None
+                _dict = getattr(obj, dict_name, None)
+                if _dict and varname in _dict:
+                    return (True, str(_dict[varname]))
+                obj = obj.parent
             return (False, "")
 
-        obj: ContextNode | None = self
-        while obj is not None:
-            if varname in obj.env:
-                return (True, str(obj.env[varname]))
-            obj = obj.parent
+        if name.startswith("env."):
+            return try_get_from_dict("env", name[4:])
+        elif name.startswith("var."):
+            return try_get_from_dict("var", name[4:])
+        elif "." not in name:
+            # Not a fqn? Let's try to get it from env/var
+            found, value = try_get_from_dict("env", name)
+            if not found:
+                found, value = try_get_from_dict("var", name)
+            if found:
+                return (True, value)
+            return (False, "")
 
-        return (False, "")
-
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
-        raise NotImplementedError()
+        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
+        found, obj = traverse_obj(self, path)
+        if not found:
+            return (False, "")
+        found, value = get_obj_attr(obj, varname)
+        if not found:
+            return (False, "")
+        value = str(value) if raw else self.expand_expr(value)
+        return (True, value if raw else self.expand_expr(value))
 
     def get_value(self, name: str, default: Any = None) -> str | None:
         found, value = self.try_get_value(name)
@@ -245,18 +287,17 @@ class ContextNode:
             return default
         return value.lower() in ("true", "1")
 
-    def set_value(self, name: str, value: str) -> bool:
-        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
-        if prefix not in ("env", ""):
-            return False
+    def set_value(self, name: str, value: str) -> None:
+        if "." not in name:
+            # Not a fqn? Let's treat it as a env variable
+            self.env[name] = value
+        else:
+            path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
+            found, obj = traverse_obj(self, path)
+            if not found:
+                raise ValueError(f"Variable {name} not found")
 
-        obj: ContextNode | None = self
-        while obj is not None:
-            if varname in obj.env:
-                obj.env[varname] = value
-                return True
-            obj = obj.parent
-        return False
+            set_obj_attr(obj, varname, value)
 
     def dispatch(self) -> ProcessResult | None:
         pass
@@ -279,8 +320,8 @@ class PipeContext(ContextNode):
 
         self.attrs.ensure_property("var", {})
         self.attrs.ensure_property("jobs", {})
-        self.attrs.ensure_property("pipelines", {})
 
+        # Override env with some defaults
         self.env = {
             **os.environ,
             **dotenv_values(".env"),
@@ -290,31 +331,7 @@ class PipeContext(ContextNode):
         }
 
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
-
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
-        found, value = self.try_get_env(name)
-        if found:
-            return (True, value)
-        found, value = traverse_context(self, name)
-        if found:
-            return (True, str(value))
-        return (False, "")
-
-    def set_value(self, name: str, value: str) -> bool:
-        if super().set_value(name, value):
-            return True
-
-        obj = self
-        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
-        found, obj = traverse_context(self, path)
-        if not found:
-            raise ValueError(f"Variable {name} not found")
-
-        if isinstance(obj, dict):
-            obj[varname] = value
-        else:
-            setattr(obj, varname, value)
-        return True
+        self.var = dict(self.attrs.var)
 
     def run_command(
         self, command: str, context: ContextNode, shell: str | None = None
@@ -443,36 +460,6 @@ class JobContext(ContextNode):
 
         return result
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
-        found, value = self.try_get_env(name)
-        if found:
-            return (True, value)
-
-        prefix, _ = name.split(".", maxsplit=1) if "." in name else ("", name)
-        if prefix != "steps":
-            return self.pipe.try_get_value(name, raw)
-
-        found, value = traverse_context(self, name)
-        if found:
-            return (True, str(value))
-        return (False, "")
-
-    def set_value(self, name: str, value: str) -> bool:
-        prefix, _ = name.split(".", maxsplit=1) if "." in name else ("", name)
-        if prefix != "steps":
-            return self.pipe.set_value(name, value)
-
-        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
-        found, obj = traverse_context(self, path)
-        if not found:
-            raise ValueError(f"Variable {name} not found")
-
-        if isinstance(obj, dict):
-            obj[varname] = value
-        else:
-            setattr(obj, varname, value)
-        return True
-
 
 class StepContext(ContextNode):
     def __init__(self, parent: JobContext, definition: dict[str, Any]):
@@ -487,7 +474,8 @@ class StepContext(ContextNode):
         self.attrs.ensure_property("if", None)
         self.attrs.ensure_property("can_fail", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
-        self.attrs.ensure_property("with", {})
+
+        self.inputs = dict(self.attrs._with or {})
 
     def dispatch(self) -> ProcessResult | None:
         if not self.pipe.can_dispatch(self):
@@ -505,36 +493,10 @@ class StepContext(ContextNode):
         logging.info(f"Running {fqn}")
         result = fn(self)
         if self.attrs.id:
-            self.set_value(
-                f"jobs.{self.job.id}.steps.{self.attrs.id}.output",
+            self.job.set_value(f"steps.{self.attrs.id}.output",
                 result.stdout.strip(),
             )
         return result
-
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
-        found, value = self.try_get_env(name)
-        if found:
-            return (True, value)
-
-        found, value = traverse_context(self, name)
-        if not found:
-            return self.job.try_get_value(name, raw)
-        return (True, str(value))
-
-    def set_value(self, name: str, value: str) -> bool:
-        prefix, varname = name.split(".", maxsplit=1) if "." in name else ("", name)
-        if prefix != "with":
-            return self.job.set_value(name, value)
-
-        found, obj = traverse_context(self, name)
-        if not found:
-            raise ValueError(f"Variable {name} not found")
-
-        if isinstance(obj, dict):
-            obj[varname] = value
-        else:
-            setattr(obj, varname, value)
-        return True
 
 
 class RequiredInputError(Exception):
@@ -568,12 +530,11 @@ def action(
                         raise RequiredAttributeError(attr)
 
             if required_inputs:
-                inputs = step.attrs._with
-                if not inputs:
+                if not step.inputs:
                     raise RequiredInputError(required_inputs[0])
 
                 for param in required_inputs:
-                    if not exists(param, inputs):
+                    if not exists(param, step.inputs):
                         raise RequiredInputError(param)
 
             return func(step)
