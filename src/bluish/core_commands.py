@@ -1,3 +1,4 @@
+import base64
 import logging
 import random
 
@@ -34,12 +35,9 @@ def expand_template(step: StepContext) -> ProcessResult:
 
     output_file = step.expand_expr(inputs.get("output_file"))
     if output_file:
-        heredocstr = f"EOF_{random.randint(1, 1000)}"
+        b64 = base64.b64encode(expanded_content.encode()).decode()
         step.pipe.run_command(
-            f"""cat <<{heredocstr} > {output_file}
-{expanded_content}
-{heredocstr}
-""",
+            f'echo "{b64}" | base64 -di - > {output_file}',
             step,
         )
     return ProcessResult(expanded_content)
