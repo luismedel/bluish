@@ -1,3 +1,5 @@
+import base64
+import logging
 import subprocess
 from typing import Callable, Optional
 
@@ -35,7 +37,8 @@ def _get_docker_pid(host: str) -> str:
     if not docker_pid:
         docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
     if not docker_pid:
-        docker_pid = run(f"docker run -d --rm {host}").stdout.strip()
+        logging.info(f"Preparing container {host}...")
+        docker_pid = run(f"docker run --detach {host} sleep infinity").stdout.strip()
     return docker_pid
 
 
@@ -47,6 +50,24 @@ def prepare_host(host: str | None) -> str | None:
             raise ValueError(f"Could not find container with name or id {host}")
         return f"docker://{docker_pid}"
     return host
+
+
+def cleanup_host(host: str | None) -> None:
+    if not host:
+        return
+
+    if host.startswith("docker://"):
+        host = host[9:]
+        logging.info(f"Stopping and removing container {host}...")
+
+        try:
+            run(f"docker stop {host}")
+        except Exception:
+            pass
+        try:
+            run(f"docker rm {host}")
+        except Exception:
+            pass
 
 
 def capture_subprocess_output(
@@ -99,7 +120,7 @@ def run(
     if host and host.startswith("ssh://"):
         ssh_host = host[6:]
         command = f"ssh {ssh_host} -- '{command}'"
-    elif host and not host.startswith("docker://"):
+    elif host and host.startswith("docker://"):
         docker_pid = host[9:]
         command = f"docker exec -i {docker_pid} bash -c '{command}'"
 
@@ -111,8 +132,6 @@ def run(
     return ProcessResult(result)
 
 
-def cleanup(host: str) -> None:
-    if host.startswith("docker://"):
-        host = host[9:]
-        run(f"docker stop {host}")
-        run(f"docker rm {host}")
+def write_file(host: str, file_path: str, content: str) -> ProcessResult:
+    b64 = base64.b64encode(content.encode()).decode()
+    return run(f"echo {b64} | base64 -di - > {file_path}", host)

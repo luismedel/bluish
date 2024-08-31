@@ -140,5 +140,25 @@ def run_jobs(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
         raise
 
 
+def test_ad_hoc():
+    init_commands()
+    init_logging("DEBUG")
+    
+    yaml_contents = """
+jobs:
+  checkout:
+    runs_on: docker://ubuntu:latest
+    steps:
+      - uses: git/checkout
+        with:
+          repository: git@github.com:luismedel/bluish.git
+          ssh_key_file: /Users/luis/.ssh/github-hilbert
+"""
+
+    pipe = PipeContext(yaml.safe_load(yaml_contents))
+    job = pipe.jobs["checkout"]
+    job.dispatch()
+
 if __name__ == "__main__":
-    main()
+    #main()
+    test_ad_hoc()

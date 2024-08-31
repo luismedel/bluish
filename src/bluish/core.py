@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Never, Optional, TypeVar
 
 from dotenv import dotenv_values
 
-from bluish.process import ProcessError, ProcessResult, prepare_host, run
+from bluish.process import ProcessError, ProcessResult, cleanup_host, prepare_host, run
 from bluish.utils import decorate_for_log
 
 DEFAULT_ACTION = "core/default-action"
@@ -18,7 +18,7 @@ REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
 SHELLS = {
     "bash": "bash -euo pipefail",
     "sh": "sh -eu",
-    "python": "python3 -PqsIEB",
+    "python": "python3 -qsIEB",
 }
 
 
@@ -262,9 +262,6 @@ class JobContext(ContextNode):
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("can_fail", False)
 
-        if "WORKING_DIR" not in self.pipe.env:
-            self.env["WORKING_DIR"] = run("pwd").stdout.strip()
-
         self.steps: dict[str, StepContext] = {}
         for i, step in enumerate(self.attrs.steps):
             key = step["id"] if "id" in step else f"steps_{i}"
@@ -286,20 +283,24 @@ class JobContext(ContextNode):
             return False
 
     def dispatch(self) -> ProcessResult | None:
-        self.runs_on_host = prepare_host(self.expand_expr(self.attrs.runs_on))
+        try:
+            self.runs_on_host = prepare_host(self.expand_expr(self.attrs.runs_on))
 
-        if not self.can_dispatch(self):
-            logging.info("Job skipped")
-            return None
+            if not self.can_dispatch(self):
+                logging.info("Job skipped")
+                return None
 
-        result: ProcessResult | None = None
-        for step in self.steps.values():
-            result = step.dispatch()
+            result: ProcessResult | None = None
+            for step in self.steps.values():
+                result = step.dispatch()
 
-        if result:
-            self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
+            if result:
+                self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
 
-        return result
+            return result
+
+        finally:
+            cleanup_host(self.runs_on_host)
 
     def run_command(
         self,
@@ -361,22 +362,25 @@ class JobContext(ContextNode):
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
-            logging.info(line.strip())
+            line = line.strip()
+            if line:
+                logging.info(line)
 
         def stderr_handler(line: str) -> None:
-            logging.error(line.strip())
+            line = line.strip()
+            if line:
+                logging.info(line)
 
         result = run(
             command,
             host=host,
-            stdout_handler=stdout_handler,
-            stderr_handler=stderr_handler,
+            stdout_handler=stdout_handler if echo_output else None,
+            stderr_handler=stderr_handler if echo_output else None,
         )
 
         if result.failed:
-            msg = f"Command failed with exit status {result.returncode}"
+            msg = f"Command failed with exit status {result.returncode}."
             if not can_fail:
-                print(result.stdout)
                 raise ProcessError(result, msg)
             logging.warning(msg)
 
@@ -474,14 +478,8 @@ def init_logging(level_name: str) -> None:
 
 
 def init_commands() -> None:
-    from bluish.core_commands import expand_template, generic_run  # noqa
-    from bluish.docker_commands import (
-        docker_build,  # noqa
-        docker_create_network,  # noqa
-        docker_exec,  # noqa
-        docker_ps,  # noqa
-        docker_run,  # noqa
-        docker_stop,  # noqa
-    )
+    import bluish.core_commands  # noqa
+    import bluish.docker_commands  # noqa
+    import bluish.git_commands  # noqa
 
     pass
