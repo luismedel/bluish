@@ -323,13 +323,12 @@ class PipeContext(ContextNode):
         self.attrs.ensure_property("var", {})
         self.attrs.ensure_property("jobs", {})
 
-        # Override env with some defaults
         self.env = {
-            **os.environ,
-            **dotenv_values(".env"),
             "WORKING_DIR": self.conn.run("pwd").stdout.strip(),
             "HOST": self.conn.default_host or "",
             **self.attrs.env,
+            **os.environ,
+            **dotenv_values(".env"),
         }
 
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
