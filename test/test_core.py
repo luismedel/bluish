@@ -301,4 +301,4 @@ jobs:
     """)
         pipe.dispatch()
         assert pipe.jobs["expand_template"].output == "Hello, World!"
-        assert pipe.conn.run(f"cat {temp_file.name}", echo_output=False).stdout.strip() == "Hello, World!"
+        assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"

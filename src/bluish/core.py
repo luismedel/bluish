@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import subprocess
-import sys
 from functools import wraps
 from typing import Any, Callable, Dict, Never, Optional, TypeVar
 
@@ -103,7 +102,9 @@ class Connection:
         return command.replace('"', '\\"')
 
     def capture_subprocess_output(
-        self, command: str, echo_output: bool
+        self,
+        command: str,
+        stdout_handler: Callable[[str], None] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         # Got the poll() trick from https://gist.github.com/tonykwok/e341a1413520bbb7cdba216ea7255828
         # Thanks @tonykwok!
@@ -130,8 +131,8 @@ class Connection:
         while process.poll() is None:
             line = process.stdout.readline()
             stdout += line
-            if echo_output:
-                sys.stdout.write(line)
+            if stdout_handler:
+                stdout_handler(line)
 
         return_code = process.wait()
         stdout = stdout.strip()
@@ -140,7 +141,11 @@ class Connection:
         return subprocess.CompletedProcess(command, return_code, stdout, stderr)
 
     def run(
-        self, command: str, echo_output: bool, host: str | None = None
+        self,
+        command: str,
+        host: str | None = None,
+        stdout_handler: Callable[[str], None] | None = None,
+        stderr_handler: Callable[[str], None] | None = None,
     ) -> ProcessResult:
         host = host or self.default_host
 
@@ -149,10 +154,10 @@ class Connection:
         if host:
             command = f'ssh {host} -- "{command}"'
 
-        result = self.capture_subprocess_output(command, echo_output)
+        result = self.capture_subprocess_output(command, stdout_handler)
 
-        if echo_output and result.stderr:
-            logging.error(result.stderr)
+        if result.stderr and stderr_handler:
+            stderr_handler(result.stderr)
 
         return ProcessResult(result)
 
@@ -322,7 +327,7 @@ class PipeContext(ContextNode):
         self.env = {
             **os.environ,
             **dotenv_values(".env"),
-            "WORKING_DIR": self.conn.run("pwd", echo_output=False).stdout.strip(),
+            "WORKING_DIR": self.conn.run("pwd").stdout.strip(),
             "HOST": self.conn.default_host or "",
             **self.attrs.env,
         }
@@ -331,8 +336,12 @@ class PipeContext(ContextNode):
         self.var = dict(self.attrs.var)
 
     def run_command(
-        self, command: str, context: ContextNode, shell: str | None = None,
-        echo_command: bool | None = None, echo_output: bool | None = None
+        self,
+        command: str,
+        context: ContextNode,
+        shell: str | None = None,
+        echo_command: bool | None = None,
+        echo_output: bool | None = None,
     ) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
@@ -353,7 +362,7 @@ class PipeContext(ContextNode):
         if context.get_inherited_attr("is_sensitive", False):
             echo_command = False
             echo_output = False
-        
+
         assert echo_command is not None
         assert echo_output is not None
 
@@ -385,10 +394,17 @@ class PipeContext(ContextNode):
         if working_dir:
             command = f'cd "{working_dir}" && {command}'
 
+        def stdout_handler(line: str) -> None:
+            logging.info(line.strip())
+
+        def stderr_handler(line: str) -> None:
+            logging.error(line.strip())
+
         result = self.conn.run(
             command,
             host=host,
-            echo_output=echo_output,
+            stdout_handler=stdout_handler,
+            stderr_handler=stderr_handler,
         )
 
         if result.failed:
