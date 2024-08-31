@@ -2,7 +2,6 @@ import click
 import yaml
 
 from bluish.core import (
-    Connection,
     JobContext,
     PipeContext,
     ProcessError,
@@ -52,9 +51,7 @@ def main(
     if not yaml_contents:
         fatal("No pipeline file found.")
 
-    conn = Connection(host)
-
-    pipe = PipeContext(yaml.safe_load(yaml_contents), conn)
+    pipe = PipeContext(yaml.safe_load(yaml_contents))
     ctx.obj = pipe
 
 

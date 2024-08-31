@@ -2,12 +2,12 @@ import base64
 import logging
 import os
 import re
-import subprocess
 from functools import wraps
 from typing import Any, Callable, Dict, Never, Optional, TypeVar
 
 from dotenv import dotenv_values
 
+from bluish.process import ProcessError, ProcessResult, prepare_host, run
 from bluish.utils import decorate_for_log
 
 DEFAULT_ACTION = "core/default-action"
@@ -65,101 +65,6 @@ def traverse_obj(obj: Any, path: str) -> tuple[bool, Any]:
 
 class VariableExpandError(Exception):
     pass
-
-
-class ProcessError(Exception):
-    def __init__(self, result: Optional["ProcessResult"], message: str | None = None):
-        super().__init__(message)
-        self.result = result
-
-
-class ProcessResult(subprocess.CompletedProcess[str]):
-    def __init__(self, data: subprocess.CompletedProcess[str] | str):
-        if isinstance(data, str):
-            self.stdout = data
-            self.stderr = ""
-            self.returncode = 0
-        elif isinstance(data, subprocess.CompletedProcess):
-            self.stdout = data.stdout or ""
-            self.stderr = data.stderr or ""
-            self.returncode = data.returncode
-        else:
-            raise ValueError("Invalid data type")
-
-    @property
-    def failed(self) -> bool:
-        return self.returncode != 0
-
-
-class Connection:
-    def __init__(self, host: str | None = None):
-        self.default_host = host
-
-    def _escape_command(self, command: str) -> str:
-        return command.replace("\\", r"\\\\").replace("$", "\\$")
-
-    def _escape_quotes(self, command: str) -> str:
-        return command.replace('"', '\\"')
-
-    def capture_subprocess_output(
-        self,
-        command: str,
-        stdout_handler: Callable[[str], None] | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        # Got the poll() trick from https://gist.github.com/tonykwok/e341a1413520bbb7cdba216ea7255828
-        # Thanks @tonykwok!
-
-        # shell = True is required for passing a string command instead of a list
-        # bufsize = 1 means output is line buffered
-        # universal_newlines = True is required for line buffering
-        process = subprocess.Popen(
-            command,
-            shell=True,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            text=True,
-        )
-
-        assert process.stdout is not None
-        assert process.stderr is not None
-
-        stdout: str = ""
-        stderr: str = ""
-
-        while process.poll() is None:
-            line = process.stdout.readline()
-            stdout += line
-            if stdout_handler:
-                stdout_handler(line)
-
-        return_code = process.wait()
-        stdout = stdout.strip()
-        stderr = process.stderr.read()
-
-        return subprocess.CompletedProcess(command, return_code, stdout, stderr)
-
-    def run(
-        self,
-        command: str,
-        host: str | None = None,
-        stdout_handler: Callable[[str], None] | None = None,
-        stderr_handler: Callable[[str], None] | None = None,
-    ) -> ProcessResult:
-        host = host or self.default_host
-
-        command = self._escape_command(command)
-
-        if host:
-            command = f'ssh {host} -- "{command}"'
-
-        result = self.capture_subprocess_output(command, stdout_handler)
-
-        if result.stderr and stderr_handler:
-            stderr_handler(result.stderr)
-
-        return ProcessResult(result)
 
 
 TResult = TypeVar("TResult")
@@ -314,18 +219,15 @@ class ContextNode:
 
 
 class PipeContext(ContextNode):
-    def __init__(self, definition: dict[str, Any], connection: Connection) -> None:
+    def __init__(self, definition: dict[str, Any]) -> None:
         super().__init__(None, definition)
 
-        self.conn = connection
         self.output: str = ""
 
         self.attrs.ensure_property("var", {})
         self.attrs.ensure_property("jobs", {})
 
         self.env = {
-            "WORKING_DIR": self.conn.run("pwd").stdout.strip(),
-            "HOST": self.conn.default_host or "",
             **self.attrs.env,
             **os.environ,
             **dotenv_values(".env"),
@@ -333,6 +235,71 @@ class PipeContext(ContextNode):
 
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
         self.var = dict(self.attrs.var)
+
+    def dispatch(self) -> ProcessResult | None:
+        result: ProcessResult | None = None
+        for job in self.jobs.values():
+            result = job.dispatch()
+        return result
+
+    def dispatch_job(self, id: str) -> ProcessResult | None:
+        job = next((v for k, v in self.jobs.items() if k == id), None)
+        if not job:
+            raise ValueError(f"Job {id} not found")
+        return job.dispatch()
+
+
+class JobContext(ContextNode):
+    def __init__(self, parent: PipeContext, id: str, definition: dict[str, Any]):
+        super().__init__(parent, definition)
+
+        self.pipe = parent
+        self.id = id
+        self.output: str = ""
+
+        self.runs_on_host: str | None = None
+
+        self.attrs.ensure_property("steps", [])
+        self.attrs.ensure_property("can_fail", False)
+
+        if "WORKING_DIR" not in self.pipe.env:
+            self.env["WORKING_DIR"] = run("pwd").stdout.strip()
+
+        self.steps: dict[str, StepContext] = {}
+        for i, step in enumerate(self.attrs.steps):
+            key = step["id"] if "id" in step else f"steps_{i}"
+            self.steps[key] = StepContext(self, step)
+
+    def can_dispatch(self, context: ContextNode) -> bool:
+        if context.attrs._if is None:
+            return True
+
+        logging.info(f"Testing {context.attrs._if}")
+        if not isinstance(context.attrs._if, str):
+            raise ValueError("Condition must be a string")
+
+        check_cmd = context.attrs._if.strip()
+        try:
+            _ = self.run_command(check_cmd, context, shell=DEFAULT_SHELL)
+            return True
+        except ProcessError:
+            return False
+
+    def dispatch(self) -> ProcessResult | None:
+        self.runs_on_host = prepare_host(self.expand_expr(self.attrs.runs_on))
+
+        if not self.can_dispatch(self):
+            logging.info("Job skipped")
+            return None
+
+        result: ProcessResult | None = None
+        for step in self.steps.values():
+            result = step.dispatch()
+
+        if result:
+            self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
+
+        return result
 
     def run_command(
         self,
@@ -365,7 +332,7 @@ class PipeContext(ContextNode):
         assert echo_command is not None
         assert echo_output is not None
 
-        host = context.get_value("env.HOST", self.conn.default_host)
+        host = self.runs_on_host
 
         if echo_command:
             if host:
@@ -399,7 +366,7 @@ class PipeContext(ContextNode):
         def stderr_handler(line: str) -> None:
             logging.error(line.strip())
 
-        result = self.conn.run(
+        result = run(
             command,
             host=host,
             stdout_handler=stdout_handler,
@@ -409,70 +376,9 @@ class PipeContext(ContextNode):
         if result.failed:
             msg = f"Command failed with exit status {result.returncode}"
             if not can_fail:
+                print(result.stdout)
                 raise ProcessError(result, msg)
             logging.warning(msg)
-
-        return result
-
-    def can_dispatch(self, context: ContextNode) -> bool:
-        if context.attrs._if is None:
-            return True
-
-        logging.info(f"Testing {context.attrs._if}")
-        if not isinstance(context.attrs._if, str):
-            raise ValueError("Condition must be a string")
-
-        check_cmd = context.attrs._if.strip()
-        try:
-            _ = self.run_command(check_cmd, context, shell=DEFAULT_SHELL)
-            return True
-        except ProcessError:
-            return False
-
-    def dispatch(self) -> ProcessResult | None:
-        if not self.can_dispatch(self):
-            logging.info("Pipeline skipped")
-            return None
-
-        result: ProcessResult | None = None
-        for job in self.jobs.values():
-            result = job.dispatch()
-        return result
-
-    def dispatch_job(self, id: str) -> ProcessResult | None:
-        job = next((v for k, v in self.jobs.items() if k == id), None)
-        if not job:
-            raise ValueError(f"Job {id} not found")
-        return job.dispatch()
-
-
-class JobContext(ContextNode):
-    def __init__(self, parent: PipeContext, id: str, definition: dict[str, Any]):
-        super().__init__(parent, definition)
-
-        self.pipe = parent
-        self.id = id
-        self.output: str = ""
-
-        self.attrs.ensure_property("steps", [])
-        self.attrs.ensure_property("can_fail", False)
-
-        self.steps: dict[str, StepContext] = {}
-        for i, step in enumerate(self.attrs.steps):
-            key = step["id"] if "id" in step else f"steps_{i}"
-            self.steps[key] = StepContext(self, step)
-
-    def dispatch(self) -> ProcessResult | None:
-        if not self.pipe.can_dispatch(self):
-            logging.info("Job skipped")
-            return None
-
-        result: ProcessResult | None = None
-        for step in self.steps.values():
-            result = step.dispatch()
-
-        if result:
-            self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
 
         return result
 
@@ -494,7 +400,7 @@ class StepContext(ContextNode):
         self.inputs = dict(self.attrs._with or {})
 
     def dispatch(self) -> ProcessResult | None:
-        if not self.pipe.can_dispatch(self):
+        if not self.job.can_dispatch(self):
             logging.info("Step skipped")
             return None
 

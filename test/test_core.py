@@ -4,12 +4,12 @@ import tempfile
 import pytest
 import yaml
 from bluish.core import (
-    Connection,
     PipeContext,
     RequiredAttributeError,
     RequiredInputError,
     init_commands,
 )
+from bluish.process import run
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -19,7 +19,7 @@ def initialize_commands():
 
 def create_pipe(yaml_definition: str) -> PipeContext:
     definition = yaml.safe_load(yaml_definition)
-    return PipeContext(definition, Connection())
+    return PipeContext(definition)
 
 
 def test_multiple_jobs() -> None:
@@ -301,4 +301,4 @@ jobs:
     """)
         pipe.dispatch()
         assert pipe.jobs["expand_template"].output == "Hello, World!"
-        assert pipe.conn.run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
+        assert run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"

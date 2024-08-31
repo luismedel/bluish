@@ -28,7 +28,7 @@ class EmptyPIDError(Exception):
 
 
 def run_and_get_pid(command: str, step: StepContext) -> str:
-    result = step.pipe.run_command(command, step)
+    result = step.job.run_command(command, step)
     return result.stdout.strip()
 
 
@@ -36,7 +36,7 @@ def docker_ps(
     step: StepContext, name: str | None = None, pid: str | None = None
 ) -> ProcessResult:
     filter = f"name={name}" if name else f"id={pid}"
-    return step.pipe.run_command(f"docker ps -f {filter} --all --quiet", step)
+    return step.job.run_command(f"docker ps -f {filter} --all --quiet", step)
 
 
 @action("docker/build", required_inputs=["tags"])
@@ -49,7 +49,7 @@ def docker_build(step: StepContext) -> ProcessResult:
     options += _build_list_opt("-t", inputs.get("tags"))
 
     context = inputs.get("context", step.try_get_value("env.WORKING_DIR"))
-    return step.pipe.run_command(f"docker build {options} {context}", step)
+    return step.job.run_command(f"docker build {options} {context}", step)
 
 
 @action("docker/get-pid", required_inputs=["name"])
@@ -159,7 +159,7 @@ def docker_exec(step: StepContext) -> ProcessResult:
             line = line[:-1] + command_lines[i].strip()
         i += 1
 
-        result = step.pipe.run_command(
+        result = step.job.run_command(
             f"docker exec {options} {container_pid} {line}", step
         )
         output += result.stdout
@@ -180,7 +180,7 @@ def docker_create_network(step: StepContext) -> ProcessResult:
     name = inputs["name"]
     fail_if_exists = inputs.get("fail_if_exists", True)
 
-    result = step.pipe.run_command(f"docker network ls -f name={name} --quiet", step)
+    result = step.job.run_command(f"docker network ls -f name={name} --quiet", step)
 
     network_id = result.stdout.strip()
     if network_id:
@@ -194,7 +194,7 @@ def docker_create_network(step: StepContext) -> ProcessResult:
             options += _build_opt(f"--{opt}", inputs.get(opt))
         for flag in ["ingress", "internal"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
-        network_id = step.pipe.run_command(
+        network_id = step.job.run_command(
             f"docker network create {options} {name}", step
         ).stdout.strip()
         logging.info(f"Network {name} created with id {network_id}.")
