@@ -157,27 +157,26 @@ class ContextNode:
                 _dict: dict[str, Any] | None
                 _dict = getattr(obj, dict_name, None)
                 if _dict and varname in _dict:
-                    return (True, str(_dict[varname]))
+                    result = str(_dict[varname]) if raw else self.expand_expr(_dict[varname])
+                    return (True, result)
                 obj = obj.parent
             return (False, "")
 
         if name.startswith("env."):
-            found, value = try_get_from_dict("env", name[4:])
-            if found:
-                return (True, value)
-            return try_get_from_dict("sys_env", name[4:])
+            for d in ("env", "sys_env"):
+                found, value = try_get_from_dict(d, name[4:])
+                if found:
+                    return (True, value)
+            return (False, "")
         elif name.startswith("var."):
             return try_get_from_dict("var", name[4:])
         elif "." not in name:
             # Not a fqn? Let's try to get it from env/var
-            found, value = try_get_from_dict("env", name)
-            if not found:
-                found, value = try_get_from_dict("var", name)
-            if not found:
-                found, value = traverse_obj(self, name)
-            if found:
-                return (True, value)
-            return (False, "")
+            for d in ("env", "sys_env", "var"):
+                found, value = try_get_from_dict(d, name)
+                if found:
+                    return (True, value)
+            return traverse_obj(self, name)
 
         path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
         found, obj = traverse_obj(self, path)
@@ -269,6 +268,16 @@ class JobContext(ContextNode):
 
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("can_fail", False)
+        
+        self.env = {
+            **parent.env,
+            **self.attrs.env,
+        }
+
+        self.var = {
+            **parent.var,
+            **self.attrs.var,
+        }
 
         self.steps: dict[str, StepContext] = {}
         for i, step in enumerate(self.attrs.steps):
@@ -395,8 +404,9 @@ class JobContext(ContextNode):
             b64 = base64.b64encode(command.encode()).decode()
             command = f"echo {b64} | base64 -di - | {interpreter}"
 
-        working_dir = self.get_value("env.WORKING_DIR")
+        working_dir = context.get_value("env.WORKING_DIR")
         if working_dir:
+            logging.debug(f"Working dir: {working_dir}")
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:

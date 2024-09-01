@@ -243,6 +243,23 @@ jobs:
     assert pipe.jobs["expansion"].output == "Hello World! :-)"
 
 
+def test_working_dir_expansion() -> None:
+    pipe = create_pipe("""
+var:
+    PATH: "/tmp"
+
+jobs:
+    expansion:
+        name: Test expansion
+        env:
+            WORKING_DIR: ${{ var.PATH }}
+        steps:
+            - run: echo '${{ env.WORKING_DIR }}'
+""")
+    pipe.dispatch()
+    assert pipe.jobs["expansion"].output == "/tmp"
+
+
 def test_values() -> None:
     pipe = create_pipe("""
 env:
