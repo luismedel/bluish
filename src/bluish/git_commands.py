@@ -18,7 +18,11 @@ def prepare_environment(step: StepContext) -> None:
     if step.job.run_internal_command("which git", step).returncode != 0:
         is_alpine = step.job.run_internal_command("which apk", step).returncode == 0
 
-        command = "apk update && apk add git" if is_alpine else "apt update && apt install git -y"
+        command = (
+            "apk update && apk add git"
+            if is_alpine
+            else "apt update && apt install git -y"
+        )
         result = step.job.run_internal_command(command, step)
         if result.returncode != 0:
             raise ProcessError(None, f"Failed to install git. Error: {result.stdout}")

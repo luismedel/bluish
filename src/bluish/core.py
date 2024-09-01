@@ -425,10 +425,12 @@ class JobContext(ContextNode):
 
         return result
 
-    def run_internal_command(        self,
-        command: str,
-        context: Union["StepContext", "JobContext"]):
-            return self.run_command(command, context, echo_command=False, echo_output=False, can_fail=True)
+    def run_internal_command(
+        self, command: str, context: Union["StepContext", "JobContext"]
+    ):
+        return self.run_command(
+            command, context, echo_command=False, echo_output=False, can_fail=True
+        )
 
 
 class StepContext(ContextNode):
