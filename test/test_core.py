@@ -342,6 +342,37 @@ jobs:
         assert run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
 
 
+def test_pass_env() -> None:
+    pipe = create_pipe("""
+env:
+    WORLD: "World!"
+
+jobs:
+    pass_env:
+        steps:
+            - run: |
+                  echo "Hello, $WORLD"
+""")
+    pipe.dispatch()
+    assert pipe.jobs["pass_env"].output == "Hello, World!"
+
+
+def test_pass_env_to_docker() -> None:
+    pipe = create_pipe("""
+env:
+    WORLD: "World!"
+
+jobs:
+    pass_env:
+        runs_on: docker://alpine:latest
+        steps:
+            - run: |
+                  echo "Hello, $WORLD"
+""")
+    pipe.dispatch()
+    assert pipe.jobs["pass_env"].output == "Hello, World!"
+
+
 def test_docker_run() -> None:
     pipe = create_pipe("""
 jobs:

@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from functools import wraps
-from typing import Any, Callable, Dict, Never, Optional, TypeVar
+from typing import Any, Callable, Dict, Never, Optional, TypeVar, Union
 
 from dotenv import dotenv_values
 
@@ -162,7 +162,10 @@ class ContextNode:
             return (False, "")
 
         if name.startswith("env."):
-            return try_get_from_dict("env", name[4:])
+            found, value = try_get_from_dict("env", name[4:])
+            if found:
+                return (True, value)
+            return try_get_from_dict("sys_env", name[4:])
         elif name.startswith("var."):
             return try_get_from_dict("var", name[4:])
         elif "." not in name:
@@ -231,6 +234,9 @@ class PipeContext(ContextNode):
 
         self.env = {
             **self.attrs.env,
+        }
+
+        self.sys_env = {
             **os.environ,
             **dotenv_values(".env"),
         }
@@ -269,7 +275,7 @@ class JobContext(ContextNode):
             key = step["id"] if "id" in step else f"steps_{i}"
             self.steps[key] = StepContext(self, step)
 
-    def can_dispatch(self, context: ContextNode) -> bool:
+    def can_dispatch(self, context: Union["StepContext", "JobContext"]) -> bool:
         if context.attrs._if is None:
             return True
 
@@ -319,12 +325,28 @@ class JobContext(ContextNode):
     def run_command(
         self,
         command: str,
-        context: ContextNode,
+        context: Union["StepContext", "JobContext"],
         shell: str | None = None,
         echo_command: bool | None = None,
         echo_output: bool | None = None,
     ) -> ProcessResult:
         command = context.expand_expr(command).strip()
+
+        # Build the env map
+
+        env = {}
+
+        ctx: ContextNode | None = context
+        while ctx:
+            for k, v in ctx.env.items():
+                if k in env:
+                    continue
+                env[k] = ctx.expand_expr(v)
+            ctx = ctx.parent
+
+        env_str = "; ".join([f'{k}="{v}"' for k, v in env.items()]).strip()
+        if env_str:
+            command = f"{env_str}; {command}"
 
         if echo_command is None:
             echo_command = (
