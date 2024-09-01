@@ -302,3 +302,59 @@ jobs:
         pipe.dispatch()
         assert pipe.jobs["expand_template"].output == "Hello, World!"
         assert run(f"cat {temp_file.name}").stdout.strip() == "Hello, World!"
+
+
+def test_docker_run() -> None:
+    with tempfile.NamedTemporaryFile() as temp_file:
+        pipe = create_pipe(f"""
+jobs:
+    docker_run:
+        runs_on: docker://bash:latest
+        steps:
+            - run: |
+                  echo 'Hello, World!'
+    """)
+        pipe.dispatch()
+        assert pipe.jobs["docker_run"].output == "Hello, World!"
+
+
+def test_file_upload() -> None:
+    with tempfile.NamedTemporaryFile() as temp_file:
+        temp_file.write(b"Hello, World!")
+        temp_file.flush()
+        pipe = create_pipe(f"""
+jobs:
+    file_upload:
+        runs_on: docker://bash:latest
+        steps:
+            - uses: core/upload-file
+              with:
+                  source_file: {temp_file.name}
+                  destination_file: /tmp/hello.txt
+            - run: cat /tmp/hello.txt
+    """)
+        pipe.dispatch()
+    assert pipe.jobs["file_upload"].output.strip() == "Hello, World!"
+
+
+def test_file_download() -> None:
+    with tempfile.NamedTemporaryFile() as temp_file:
+        temp_file.write(b"Hello, World!")
+        temp_file.flush()
+
+        pipe = create_pipe(f"""
+jobs:
+    file_download:
+        runs_on: docker://bash:latest
+        steps:
+            - run: |
+                  echo 'Hello, World!' > /tmp/hello.txt
+            - uses: core/download-file
+              with:
+                  source_file: /tmp/hello.txt
+                  destination_file: {temp_file.name}
+    """)
+        pipe.dispatch()
+
+        with open(temp_file.name, "r") as f:
+            assert f.read().strip() == "Hello, World!"
