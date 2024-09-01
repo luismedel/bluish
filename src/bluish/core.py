@@ -170,6 +170,8 @@ class ContextNode:
             found, value = try_get_from_dict("env", name)
             if not found:
                 found, value = try_get_from_dict("var", name)
+            if not found:
+                found, value = traverse_obj(self, name)
             if found:
                 return (True, value)
             return (False, "")

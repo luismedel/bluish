@@ -291,12 +291,15 @@ jobs:
                   job.var.TEMP: 42
                   var.STEP_SCOPE: 1
                   pipe.var.PIPE_SCOPE: 1
+                  job.var.TEST_OUTPUT: ${{ output }}
 """)
     pipe.dispatch()
     assert pipe.jobs["set"].steps["echo-step"].output == "VALUE == 2"
+    assert pipe.jobs["set"].var["TEST_OUTPUT"] == "VALUE == 2"
     assert pipe.get_value("VALUE") == "1"
     assert pipe.get_value("jobs.set.var.TEMP") == "42"
     assert pipe.get_value("STEP_SCOPE") is None
+    assert pipe.get_value("PIPE_SCOPE") == "1"
     assert pipe.get_value("PIPE_SCOPE") == "1"
 
 
