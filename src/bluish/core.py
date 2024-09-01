@@ -22,7 +22,7 @@ SHELLS = {
 }
 
 
-DEFAULT_SHELL = "bash"
+DEFAULT_SHELL = "sh"
 
 
 def fatal(message: str, exit_code: int = 1) -> Never:

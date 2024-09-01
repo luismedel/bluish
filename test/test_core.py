@@ -110,12 +110,12 @@ jobs:
     assert pipe.jobs["hello_run"].output == "Hello, World!"
 
 
-def test_shell_run_sh() -> None:
+def test_shell_run_bash() -> None:
     pipe = create_pipe("""
 jobs:
     hello_sh:
         name: "Hello, World!"
-        shell: sh
+        shell: bash
         steps:
             - run: echo 'Hello, World!'
 """)
@@ -302,7 +302,7 @@ def test_docker_run() -> None:
     pipe = create_pipe("""
 jobs:
     docker_run:
-        runs_on: docker://bash:latest
+        runs_on: docker://alpine:latest
         steps:
             - run: |
                   echo 'Hello, World!'
@@ -318,7 +318,7 @@ def test_file_upload() -> None:
         pipe = create_pipe(f"""
 jobs:
     file_upload:
-        runs_on: docker://bash:latest
+        runs_on: docker://alpine:latest
         steps:
             - uses: core/upload-file
               with:
@@ -338,7 +338,7 @@ def test_file_download() -> None:
         pipe = create_pipe(f"""
 jobs:
     file_download:
-        runs_on: docker://bash:latest
+        runs_on: docker://alpine:latest
         steps:
             - run: |
                   echo 'Hello, World!' > /tmp/hello.txt
