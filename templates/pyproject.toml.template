@@ -27,8 +27,11 @@ classifiers = [
 [project.urls]
 "Homepage" = "https://github.com/luismedel/bluish"
 
-[tool.setuptools.package-data]
-tsidpy = ["py.typed"]
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
 
 [project.scripts]
-bluish = "bluish.app:main"
+blu = "bluish.app:blu_cli"
+bluish = "bluish.app:bluish_cli"

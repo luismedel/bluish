@@ -28,7 +28,7 @@ classifiers = [
 "Homepage" = "https://github.com/luismedel/bluish"
 
 [tool.setuptools.package-data]
-tsidpy = ["py.typed"]
+bluish = ["py.typed"]
 
 [tool.pytest.ini_options]
 pythonpath = [
