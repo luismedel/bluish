@@ -1,4 +1,5 @@
 import os
+
 import click
 import yaml
 
@@ -104,7 +105,7 @@ def blu_cli(
     init_logging(log_level)
     init_commands()
 
-    file: str = ""    
+    file: str = ""
     if ":" in job_id:
         file, job_id = job_id.split(":")
 
@@ -118,9 +119,7 @@ def blu_cli(
 
 @click.group("bluish")
 @click.option(
-    "--file",
-    "-f",
-    type=click.Path(dir_okay=False, readable=True, resolve_path=True)
+    "--file", "-f", type=click.Path(dir_okay=False, readable=True, resolve_path=True)
 )
 @click.option(
     "--log-level",
@@ -136,13 +135,15 @@ def bluish_cli(
 ) -> None:
     init_logging(log_level)
     init_commands()
-    
+
     yaml_contents: str = ""
     yaml_path = file or locate_yaml("")
+    if not yaml_path:
+        fatal("No pipeline file found.")
 
     try:
-        with open(file, "r") as yaml_path:
-            yaml_contents = yaml_path.read()
+        with open(yaml_path, "r") as yaml_file:
+            yaml_contents = yaml_file.read()
     except FileNotFoundError:
         pass
 
