@@ -1,0 +1,3 @@
+[submodule "bluish.wiki"]
+	path = bluish.wiki
+	url = git@github.com:luismedel/bluish.wiki.git
