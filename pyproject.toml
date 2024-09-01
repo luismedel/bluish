@@ -31,4 +31,5 @@ classifiers = [
 tsidpy = ["py.typed"]
 
 [project.scripts]
-bluish = "bluish.app:main"
+blu = "bluish.app:blu_cli"
+bluish = "bluish.app:bluish_cli"

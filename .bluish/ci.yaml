@@ -1,8 +1,6 @@
 
-env:
-  PROJECT_VERSION: "0.0.1"
+var:
   PYTHON_VERSION: "3.11"
-
 
 jobs:
   lint:
@@ -31,12 +29,3 @@ jobs:
     steps:
       - run: |
           pytest
-  
-  update-metadata:
-    name: Updates the info present in the pyproject.toml file
-    steps:
-      - uses: expand-template
-        is_sensitive: true
-        with:
-          input_file: ./templates/pyproject.toml.template
-          output_file: ./pyproject.toml
