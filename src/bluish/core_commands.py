@@ -42,7 +42,43 @@ def expand_template(step: StepContext) -> ProcessResult:
         step.job.run_command(
             f'echo "{b64}" | base64 -di - > {output_file}',
             step,
+            shell="sh",
             echo_command=False,
             echo_output=False,
         )
     return ProcessResult(expanded_content)
+
+
+@action("core/upload-file", required_inputs=["source_file", "destination_file"])
+def upload_file(step: StepContext) -> ProcessResult:
+    inputs = step.inputs
+
+    contents: str
+    source_file = step.expand_expr(inputs["source_file"])
+    with open(source_file, "r") as f:
+        contents = f.read()
+    b64 = base64.b64encode(contents.encode()).decode()
+
+    destination_file = step.expand_expr(inputs.get("destination_file"))
+    return step.job.run_command(
+        f'echo "{b64}" | base64 -di - > {destination_file}',
+        step,
+        shell="sh",
+        echo_command=False,
+        echo_output=False,
+    )
+
+
+@action("core/download-file", required_inputs=["source_file", "destination_file"])
+def download_file(step: StepContext) -> ProcessResult:
+    inputs = step.inputs
+
+    source_file = step.expand_expr(inputs["source_file"])
+    b64 = step.job.run_command(f"cat {source_file} | base64", step).stdout.strip()
+    raw_contents = base64.b64decode(b64)
+    
+    destination_file = step.expand_expr(inputs.get("destination_file"))
+    with open(destination_file, "wb") as f:
+        f.write(raw_contents)
+
+    return ProcessResult("")
