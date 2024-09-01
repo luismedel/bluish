@@ -1,10 +1,9 @@
 
 import tempfile
+from test.utils import create_pipe
 
 import pytest
-import yaml
 from bluish.core import (
-    PipeContext,
     RequiredAttributeError,
     RequiredInputError,
     init_commands,
@@ -15,11 +14,6 @@ from bluish.process import run
 @pytest.fixture(scope="session", autouse=True)
 def initialize_commands():
     init_commands()
-
-
-def create_pipe(yaml_definition: str) -> PipeContext:
-    definition = yaml.safe_load(yaml_definition)
-    return PipeContext(definition)
 
 
 def test_multiple_jobs() -> None:
@@ -305,8 +299,7 @@ jobs:
 
 
 def test_docker_run() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        pipe = create_pipe(f"""
+    pipe = create_pipe("""
 jobs:
     docker_run:
         runs_on: docker://bash:latest
@@ -314,8 +307,8 @@ jobs:
             - run: |
                   echo 'Hello, World!'
     """)
-        pipe.dispatch()
-        assert pipe.jobs["docker_run"].output == "Hello, World!"
+    pipe.dispatch()
+    assert pipe.jobs["docker_run"].output == "Hello, World!"
 
 
 def test_file_upload() -> None:

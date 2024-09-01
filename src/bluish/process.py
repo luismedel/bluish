@@ -11,21 +11,24 @@ class ProcessError(Exception):
 
 
 class ProcessResult(subprocess.CompletedProcess[str]):
-    def __init__(self, data: subprocess.CompletedProcess[str] | str):
-        if isinstance(data, str):
-            self.stdout = data
-            self.stderr = ""
-            self.returncode = 0
-        elif isinstance(data, subprocess.CompletedProcess):
-            self.stdout = data.stdout or ""
-            self.stderr = data.stderr or ""
-            self.returncode = data.returncode
-        else:
-            raise ValueError("Invalid data type")
+    def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
 
     @property
     def failed(self) -> bool:
         return self.returncode != 0
+
+    @staticmethod
+    def from_subprocess_result(
+        data: subprocess.CompletedProcess[str]
+    ) -> "ProcessResult":
+        return ProcessResult(
+            stdout=data.stdout or "",
+            stderr=data.stderr or "",
+            returncode=data.returncode,
+        )
 
 
 def _escape_command(command: str) -> str:
@@ -129,7 +132,7 @@ def run(
     if result.stderr and stderr_handler:
         stderr_handler(result.stderr)
 
-    return ProcessResult(result)
+    return ProcessResult.from_subprocess_result(result)
 
 
 def write_file(host: str, file_path: str, content: str) -> ProcessResult:

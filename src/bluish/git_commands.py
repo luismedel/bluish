@@ -1,45 +1,27 @@
-
-import base64
 import os
+
 from bluish.core import StepContext, action
-from bluish.process import ProcessResult, write_file
-
-
-GIT_KEY_FILE = "$HOME/.ssh/git-key"
+from bluish.process import ProcessResult
 
 
 def run_git_command(command: str, step: StepContext) -> ProcessResult:
-    PREAMBLE = f"export GIT_SSH_COMMAND='ssh -i {GIT_KEY_FILE} -o IdentitiesOnly=yes -o StrictHostKeychecking=no';"
-    return step.job.run_command(f"{PREAMBLE} {command}", step)
+    preamble: str = ""
+
+    key_file = step.inputs.get("ssh_key_file")
+    if key_file:
+        preamble = f"export GIT_SSH_COMMAND='ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeychecking=no';"
+
+    return step.job.run_command(f"{preamble} {command}", step)
 
 
 def prepare_environment(step: StepContext) -> None:
-    ssh_key: str | None = None
-
-    ssh_key_file = step.inputs.get("ssh_key_file")
-    if ssh_key_file:
-        with open(ssh_key_file, "r") as f:
-            ssh_key = f.read()
-
-    if not ssh_key:
-        ssh_key = step.inputs.get("ssh_key")
-
-    if ssh_key:
-        b64 = base64.b64encode(ssh_key.encode()).decode()
-        _ = step.job.run_command(f"mkdir -p ~/.ssh", step)
-        _ = step.job.run_command(f"echo {b64} | base64 -di - > {GIT_KEY_FILE}", step, shell="sh", echo_command=False)
-        _ = step.job.run_command(f"chmod 600 {GIT_KEY_FILE}", step)
-        _ = step.job.run_command(f"apt update && apt install git -y", step, echo_output=False)
-        step.attrs._needs_cleanup = True
+    _ = step.job.run_command(
+        "apt update && apt install git -y", step, echo_output=False
+    )
 
 
 def cleanup_environment(step: StepContext) -> None:
-    if not step.attrs._needs_cleanup:
-        return
-    try:
-        _ = step.job.run_command(f"rm -f {GIT_KEY_FILE}", step)
-    except Exception:
-        pass
+    pass
 
 
 @action("git/checkout", required_inputs=["repository"])
@@ -49,9 +31,20 @@ def git_checkout(step: StepContext) -> ProcessResult:
 
         inputs = step.inputs
 
+        options = ""
+        if "depth" in inputs:
+            options += f"--depth {inputs['depth']}"
+        else:
+            options += "--depth 1"
+
+        if "branch" in inputs:
+            options += f" --branch {inputs['branch']}"
+
         repository: str = inputs["repository"]
         repo_name = os.path.basename(repository)
-        result = run_git_command(f"git clone {repository} ./{repo_name}", step)
+        result = run_git_command(
+            f"git clone {repository} {options} ./{repo_name}", step
+        )
 
         # Update the current job working dir to the newly cloned repo
         wd = step.job.get_value("env.WORKING_DIR", "")

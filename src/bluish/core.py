@@ -298,7 +298,19 @@ class JobContext(ContextNode):
                 self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
 
             return result
-
+        except ProcessError as e:
+            if e.result:
+                logging.error(
+                    str(e),
+                    extra={
+                        "returncode": e.result.returncode,
+                        "stdout": e.result.stdout,
+                        "stderr": e.result.stderr,
+                    },
+                )
+            else:
+                logging.error(str(e))
+            raise
         finally:
             cleanup_host(self.runs_on_host)
 
@@ -417,13 +429,7 @@ class StepContext(ContextNode):
             raise ValueError(f"Unknown action: {fqn}")
 
         logging.info(f"Running {fqn}")
-        result = fn(self)
-        if self.attrs.id:
-            self.job.set_value(
-                f"steps.{self.attrs.id}.output",
-                result.stdout.strip(),
-            )
-        return result
+        return fn(self)
 
 
 class RequiredInputError(Exception):
@@ -464,7 +470,17 @@ def action(
                     if not exists(param, step.inputs):
                         raise RequiredInputError(param)
 
-            return func(step)
+            result = func(step)
+            step.output = result.stdout.strip()
+
+            if step.attrs.set:
+                variables = step.attrs.set
+                for key, value in variables.items():
+                    value = step.expand_expr(value)
+                    logging.debug(f"Setting {key} = {value}")
+                    step.set_value(key, value)
+
+            return result
 
         REGISTERED_ACTIONS[fqn] = wrapper
         return wrapper

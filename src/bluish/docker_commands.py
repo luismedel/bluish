@@ -55,7 +55,7 @@ def docker_build(step: StepContext) -> ProcessResult:
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.inputs["name"]
-    return ProcessResult(docker_ps(step, name=name).stdout.strip())
+    return ProcessResult(stdout=docker_ps(step, name=name).stdout.strip())
 
 
 @action("docker/run", required_inputs=["image", "name"])
@@ -72,7 +72,7 @@ def docker_run(step: StepContext) -> ProcessResult:
         if fail_if_running:
             raise ProcessError(None, msg)
         logging.info(msg)
-        return ProcessResult(container_pid)
+        return ProcessResult(stdout=container_pid)
 
     options = f"--name {name} --detach"
     options += _build_list_opt("-p", inputs.get("ports"))
@@ -87,7 +87,7 @@ def docker_run(step: StepContext) -> ProcessResult:
         options += _build_flag(f"--{flag}", inputs.get(flag))
 
     container_pid = run_and_get_pid(f"docker run {options} {image}", step)
-    return ProcessResult(container_pid)
+    return ProcessResult(stdout=container_pid)
 
 
 @action("docker/stop", required_inputs=["name|pid"])
@@ -110,7 +110,7 @@ def docker_stop(step: StepContext) -> ProcessResult:
         logging.warning(msg)
         # If don't need to remove the container, we can stop here
         if not remove:
-            return ProcessResult("")
+            return ProcessResult()
 
     if issue_stop:
         options = ""
@@ -125,7 +125,7 @@ def docker_stop(step: StepContext) -> ProcessResult:
     if not run_and_get_pid(f"docker container rm {options} {container_pid}", step):
         logging.warning(f"Failed to remove container with {input_attr}.")
 
-    return ProcessResult(container_pid)
+    return ProcessResult(stdout=container_pid)
 
 
 @action("docker/exec", required_inputs=["name|pid", "run"])
@@ -168,9 +168,9 @@ def docker_exec(step: StepContext) -> ProcessResult:
             cp = subprocess.CompletedProcess(
                 command, result.returncode, output, result.stderr
             )
-            return ProcessResult(cp)
+            return ProcessResult.from_subprocess_result(cp)
 
-    return ProcessResult(output)
+    return ProcessResult(stdout=output)
 
 
 @action("docker/create-network", required_inputs=["name"])
@@ -199,4 +199,4 @@ def docker_create_network(step: StepContext) -> ProcessResult:
         ).stdout.strip()
         logging.info(f"Network {name} created with id {network_id}.")
 
-    return ProcessResult(network_id)
+    return ProcessResult(stdout=network_id)
