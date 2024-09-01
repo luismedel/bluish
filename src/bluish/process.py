@@ -122,7 +122,7 @@ def run(
         command = f"ssh {ssh_host} -- '{command}'"
     elif host and host.startswith("docker://"):
         docker_pid = host[9:]
-        command = f"docker exec -i {docker_pid} bash -c '{command}'"
+        command = f"docker exec -i {docker_pid} sh -c '{command}'"
 
     result = capture_subprocess_output(command, stdout_handler)
 

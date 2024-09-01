@@ -27,7 +27,7 @@ def prepare_environment(step: StepContext) -> None:
     if ssh_key:
         b64 = base64.b64encode(ssh_key.encode()).decode()
         _ = step.job.run_command(f"mkdir -p ~/.ssh", step)
-        _ = step.job.run_command(f"echo {b64} | base64 -di - > {GIT_KEY_FILE}", step, echo_command=False)
+        _ = step.job.run_command(f"echo {b64} | base64 -di - > {GIT_KEY_FILE}", step, shell="sh", echo_command=False)
         _ = step.job.run_command(f"chmod 600 {GIT_KEY_FILE}", step)
         _ = step.job.run_command(f"apt update && apt install git -y", step, echo_output=False)
         step.attrs._needs_cleanup = True
