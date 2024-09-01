@@ -1,9 +1,9 @@
 
 import tempfile
-from bluish.app import dispatch_job
 from test.utils import create_pipe
 
 import pytest
+from bluish.app import dispatch_job
 from bluish.core import (
     RequiredAttributeError,
     RequiredInputError,
