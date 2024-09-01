@@ -13,7 +13,7 @@ jobs:
           mypy --version
           mypy --ignore-missing-imports --python-version=${{ PYTHON_VERSION }} src/ test/
 
-  lint-fix:
+  fix:
     name: Reformats the code using ruff
     depends_on:
       - lint
