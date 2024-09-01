@@ -10,7 +10,7 @@ def initialize_commands():
     init_commands()
 
 
-def test_checkout() -> None:
+def test_docker_checkout() -> None:
     pipe = create_pipe("""
 jobs:
   checkout:
@@ -26,7 +26,7 @@ jobs:
     assert pipe.jobs["checkout"].output == "# Bluish"
 
 
-def test_checkout_alpine() -> None:
+def test_docker_checkout_alpine() -> None:
     pipe = create_pipe("""
 jobs:
   checkout:

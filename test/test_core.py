@@ -357,7 +357,7 @@ jobs:
     assert pipe.jobs["pass_env"].output == "Hello, World!"
 
 
-def test_pass_env_to_docker() -> None:
+def test_docker_pass_env() -> None:
     pipe = create_pipe("""
 env:
     WORLD: "World!"
@@ -386,7 +386,7 @@ jobs:
     assert pipe.jobs["docker_run"].output == "Hello, World!"
 
 
-def test_file_upload() -> None:
+def test_docker_file_upload() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")
         temp_file.flush()
@@ -405,7 +405,7 @@ jobs:
     assert pipe.jobs["file_upload"].output.strip() == "Hello, World!"
 
 
-def test_file_download() -> None:
+def test_docker_file_download() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")
         temp_file.flush()
