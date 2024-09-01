@@ -246,7 +246,7 @@ jobs:
                 echo 'VALUE == ${{ env.VALUE }}'
               env:
                   VALUE: 2
-            - set:
+              set:
                   job.var.TEMP: 42
                   var.STEP_SCOPE: 1
                   pipe.var.PIPE_SCOPE: 1
