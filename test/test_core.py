@@ -1,5 +1,6 @@
 
 import tempfile
+from bluish.app import dispatch_job
 from test.utils import create_pipe
 
 import pytest
@@ -31,6 +32,46 @@ jobs:
 """)
     pipe.dispatch()
     assert pipe.jobs["job1"].output == "This is Job 1"
+    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
+
+
+def test_depends_on() -> None:
+    pipe = create_pipe("""
+jobs:
+    job1:
+        name: "Job 1"
+        steps:
+            - run: echo 'This is Job 1'
+    job2:
+        name: "Job 2"
+        depends_on:
+            - job1
+        steps:
+            - run: echo 'This is Job 2, step 1'
+            - run: echo 'This is Job 2, step 2'
+""")
+    dispatch_job(pipe, "job2", False)
+    assert pipe.jobs["job1"].output == "This is Job 1"
+    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
+
+
+def test_depends_on_ignored() -> None:
+    pipe = create_pipe("""
+jobs:
+    job1:
+        name: "Job 1"
+        steps:
+            - run: echo 'This is Job 1'
+    job2:
+        name: "Job 2"
+        depends_on:
+            - job1
+        steps:
+            - run: echo 'This is Job 2, step 1'
+            - run: echo 'This is Job 2, step 2'
+""")
+    dispatch_job(pipe, "job2", True)
+    assert pipe.jobs["job1"].output == ""
     assert pipe.jobs["job2"].output == "This is Job 2, step 2"
 
 
