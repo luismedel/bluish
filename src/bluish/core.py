@@ -327,6 +327,7 @@ class JobContext(ContextNode):
         command: str,
         context: Union["StepContext", "JobContext"],
         shell: str | None = None,
+        can_fail: bool | None = None,
         echo_command: bool | None = None,
         echo_output: bool | None = None,
     ) -> ProcessResult:
@@ -376,9 +377,10 @@ class JobContext(ContextNode):
                 logging.info(f"At @{host}")
             logging.info(decorate_for_log(command))
 
-        can_fail = (
-            context.attrs.can_fail if context.attrs.can_fail is not None else False
-        )
+        if can_fail is None:
+            can_fail = (
+                context.attrs.can_fail if context.attrs.can_fail is not None else False
+            )
 
         if shell is None:
             shell = (
@@ -418,9 +420,15 @@ class JobContext(ContextNode):
             msg = f"Command failed with exit status {result.returncode}."
             if not can_fail:
                 raise ProcessError(result, msg)
-            logging.warning(msg)
+            if echo_output:
+                logging.warning(msg)
 
         return result
+
+    def run_internal_command(        self,
+        command: str,
+        context: Union["StepContext", "JobContext"]):
+            return self.run_command(command, context, echo_command=False, echo_output=False, can_fail=True)
 
 
 class StepContext(ContextNode):

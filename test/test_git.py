@@ -24,3 +24,19 @@ jobs:
 """)
     pipe.dispatch()
     assert pipe.jobs["checkout"].output == "# Bluish"
+
+
+def test_checkout_alpine() -> None:
+    pipe = create_pipe("""
+jobs:
+  checkout:
+    runs_on: docker://alpine:latest
+    steps:
+      - uses: git/checkout
+        with:
+          repository: https://github.com/luismedel/bluish.git
+      - run: |
+          head -n1 README.md
+""")
+    pipe.dispatch()
+    assert pipe.jobs["checkout"].output == "# Bluish"

@@ -1,7 +1,7 @@
 import os
 
 from bluish.core import StepContext, action
-from bluish.process import ProcessResult
+from bluish.process import ProcessError, ProcessResult
 
 
 def run_git_command(command: str, step: StepContext) -> ProcessResult:
@@ -15,9 +15,13 @@ def run_git_command(command: str, step: StepContext) -> ProcessResult:
 
 
 def prepare_environment(step: StepContext) -> None:
-    _ = step.job.run_command(
-        "apt update && apt install git -y", step, echo_output=False
-    )
+    if step.job.run_internal_command("which git", step).returncode != 0:
+        is_alpine = step.job.run_internal_command("which apk", step).returncode == 0
+
+        command = "apk update && apk add git" if is_alpine else "apt update && apt install git -y"
+        result = step.job.run_internal_command(command, step)
+        if result.returncode != 0:
+            raise ProcessError(None, f"Failed to install git. Error: {result.stdout}")
 
 
 def cleanup_environment(step: StepContext) -> None:
