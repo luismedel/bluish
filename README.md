@@ -154,24 +154,16 @@ Jobs and steps share some common attributes. Some of them are inheritable. This 
 | `echo_output` | boolean | Tells Bluish to echo the actions output. Default is `true`. |
 | `is_sensitive` | boolean | Indicates that the element is sensitive, so Bluish should not echo the commands nor the outputs. Disables both `echo_commands` and `echo_output`. The default is `false`. |
 
-### Job attributes
+### Job-specific attributes
 
 | Attribute | Type | Description |
 |---|---|---|
 | `runs_on` | string | Where to run the commands. Valid values are `docker://<image>` to fire up a new container using `image` (the container will be removed on job finalization), `docker://<name or id>` to run the commands in an already-running container, `ssh://[user@]host` to connect run the commands in `host` via ssh, or leave it blank, to run the commands in the local host. |
-| `if` | expression | An expression to evaluate in order to decide if the job must be run. An exit code of `0` is trated as `true`. Anything else is `false`. The expression will be run on the default shell, which is `sh`  for better compatibility with Alpine Linux containers. |
-| `echo_commands` | boolean | Tells Bluish to echo the executed commands. Default is `true`. |
-| `echo_output` | boolean | Tells Bluish to echo the actions output. Default is `true`. |
-| `is_sensitive` | boolean | Indicates that the element is sensitive, so Bluish should not echo the commands nor the outputs. Disables both `echo_commands` and `echo_output`. The default is `false`. |
 
-### Step attributes
+### Step-specific attributes
 
 | Attribute | Type | Description |
 |---|---|---|
-| `if` | Expression | An expression to evaluate in order to decide if the step must be run. An exit code of `0` is trated as `true`. Anything else is `false`. The expression will be run on the default shell, which is `bash`. |
-| `echo_commands` | boolean | Tells Bluish to echo the executed commands. Default is `true`. |
-| `echo_output` | boolean | Tells Bluish to echo the actions output. Default is `true`. |
-| `is_sensitive` | boolean | Indicates that the element is sensitive, so Bluish should not echo the commands nor the outputs. Disables both `echo_commands` and `echo_output`. The default is `false`. |
 | `set` | dictionary | Indicates a list of bluish or environment variables to be set *after* this step ends executing. |
 
 ## Actions
