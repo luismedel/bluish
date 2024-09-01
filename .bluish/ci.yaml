@@ -28,4 +28,4 @@ jobs:
     name: Runs pytest
     steps:
       - run: |
-          pytest
+          pytest -n 2
