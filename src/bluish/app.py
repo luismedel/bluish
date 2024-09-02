@@ -5,8 +5,8 @@ import yaml
 
 from bluish.core import (
     JobContext,
-    PipeContext,
     ProcessError,
+    WorkflowContext,
     fatal,
     init_commands,
     init_logging,
@@ -23,7 +23,7 @@ def locate_yaml(name: str) -> str | None:
     return None
 
 
-def pipe_from_file(file: str) -> PipeContext:
+def pipe_from_file(file: str) -> WorkflowContext:
     yaml_contents: str = ""
     try:
         with open(file, "r") as yaml_file:
@@ -34,10 +34,10 @@ def pipe_from_file(file: str) -> PipeContext:
     if not yaml_contents:
         fatal("No pipeline file found.")
 
-    return PipeContext(yaml.safe_load(yaml_contents))
+    return WorkflowContext(yaml.safe_load(yaml_contents))
 
 
-def dispatch_job(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
+def dispatch_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
     available_jobs = pipe.jobs
 
     job = available_jobs.get(job_id)
@@ -150,13 +150,13 @@ def bluish_cli(
     if not yaml_contents:
         fatal("No pipeline file found.")
 
-    pipe = PipeContext(yaml.safe_load(yaml_contents))
+    pipe = WorkflowContext(yaml.safe_load(yaml_contents))
     ctx.obj = pipe
 
 
 @bluish_cli.command("list")
 @click.pass_obj
-def list_jobs(pipe: PipeContext) -> None:
+def list_jobs(pipe: WorkflowContext) -> None:
     available_jobs = pipe.jobs
 
     if len(available_jobs) == 0:
@@ -183,7 +183,7 @@ def list_jobs(pipe: PipeContext) -> None:
 @click.argument("job_id", type=str, required=True)
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.pass_obj
-def run_job(pipe: PipeContext, job_id: str, no_deps: bool) -> None:
+def run_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
     dispatch_job(pipe, job_id, no_deps)
 
 

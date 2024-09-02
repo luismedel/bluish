@@ -48,7 +48,8 @@ def docker_build(step: StepContext) -> ProcessResult:
     options = f"-f '{dockerfile}'"
     options += _build_list_opt("-t", inputs.get("tags"))
 
-    context = inputs.get("context", step.try_get_value("env.WORKING_DIR"))
+    working_dir = step.get_value("env.WORKING_DIR", ".")
+    context = inputs.get("context", working_dir)
     return step.job.run_command(f"docker build {options} {context}", step)
 
 

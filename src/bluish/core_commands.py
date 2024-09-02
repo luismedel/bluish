@@ -17,7 +17,10 @@ def expand_template(step: StepContext) -> ProcessResult:
     template_content: str
     if "input_file" in inputs:
         template_file = step.expand_expr(inputs["input_file"])
-        template_content = step.job.run_command(f"cat {template_file}", step).stdout
+        b64 = step.job.run_internal_command(
+            f"cat {template_file} | base64", step
+        ).stdout.strip()
+        template_content = base64.b64decode(b64).decode()
     else:
         template_content = inputs["input"]
 
@@ -26,12 +29,8 @@ def expand_template(step: StepContext) -> ProcessResult:
     output_file = step.expand_expr(inputs.get("output_file"))
     if output_file:
         b64 = base64.b64encode(expanded_content.encode()).decode()
-        step.job.run_command(
-            f'echo "{b64}" | base64 -di - > {output_file}',
-            step,
-            shell="sh",
-            echo_command=False,
-            echo_output=False,
+        step.job.run_internal_command(
+            f'echo "{b64}" | base64 -di - > {output_file}', step
         )
 
         if "chmod" in inputs:
@@ -54,12 +53,8 @@ def upload_file(step: StepContext) -> ProcessResult:
     b64 = base64.b64encode(contents.encode()).decode()
 
     destination_file = step.expand_expr(inputs.get("destination_file"))
-    result = step.job.run_command(
-        f'echo "{b64}" | base64 -di - > {destination_file}',
-        step,
-        shell="sh",
-        echo_command=False,
-        echo_output=False,
+    result = step.job.run_internal_command(
+        f'echo "{b64}" | base64 -di - > {destination_file}', step
     )
 
     if "chmod" in inputs:
@@ -74,7 +69,9 @@ def download_file(step: StepContext) -> ProcessResult:
     inputs = step.inputs
 
     source_file = step.expand_expr(inputs["source_file"])
-    b64 = step.job.run_command(f"cat {source_file} | base64", step).stdout.strip()
+    b64 = step.job.run_internal_command(
+        f"cat {source_file} | base64", step
+    ).stdout.strip()
     raw_contents = base64.b64decode(b64)
 
     try:

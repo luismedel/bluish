@@ -1,10 +1,10 @@
 
 import yaml
 from bluish.core import (
-    PipeContext,
+    WorkflowContext,
 )
 
 
-def create_pipe(yaml_definition: str) -> PipeContext:
+def create_workflow(yaml_definition: str) -> WorkflowContext:
     definition = yaml.safe_load(yaml_definition)
-    return PipeContext(definition)
+    return WorkflowContext(definition)
