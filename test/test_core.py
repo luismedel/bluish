@@ -1,6 +1,6 @@
 
 import tempfile
-from test.utils import create_pipe
+from test.utils import create_workflow
 
 import pytest
 from bluish.app import dispatch_job
@@ -18,7 +18,7 @@ def initialize_commands():
 
 
 def test_multiple_jobs() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     job1:
         name: "Job 1"
@@ -30,13 +30,13 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["job1"].output == "This is Job 1"
-    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
+    wf.dispatch()
+    assert wf.jobs["job1"].output == "This is Job 1"
+    assert wf.jobs["job2"].output == "This is Job 2, step 2"
 
 
 def test_depends_on() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     job1:
         name: "Job 1"
@@ -50,13 +50,13 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    dispatch_job(pipe, "job2", False)
-    assert pipe.jobs["job1"].output == "This is Job 1"
-    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
+    dispatch_job(wf, "job2", False)
+    assert wf.jobs["job1"].output == "This is Job 1"
+    assert wf.jobs["job2"].output == "This is Job 2, step 2"
 
 
 def test_depends_on_ignored() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     job1:
         name: "Job 1"
@@ -70,13 +70,13 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    dispatch_job(pipe, "job2", True)
-    assert pipe.jobs["job1"].output == ""
-    assert pipe.jobs["job2"].output == "This is Job 2, step 2"
+    dispatch_job(wf, "job2", True)
+    assert wf.jobs["job1"].output == ""
+    assert wf.jobs["job2"].output == "This is Job 2, step 2"
 
 
 def test_conditions() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     # check == false at the job level
     job1:
@@ -116,16 +116,16 @@ jobs:
               run: |
                 print("This will not be printed")
 """)
-    pipe.dispatch()
-    assert pipe.jobs["job1"].output == ""
-    assert pipe.jobs["job2"].output == "This is Job 2"
-    assert pipe.jobs["job3"].output == "This is Job 3"
-    assert pipe.jobs["job4"].output == "This is Job 4"
-    assert pipe.jobs["job5"].output == ""
+    wf.dispatch()
+    assert wf.jobs["job1"].output == ""
+    assert wf.jobs["job2"].output == "This is Job 2"
+    assert wf.jobs["job3"].output == "This is Job 3"
+    assert wf.jobs["job4"].output == "This is Job 4"
+    assert wf.jobs["job5"].output == ""
 
 
 def test_working_directory() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 env:
     WORKING_DIR: /tmp
 
@@ -135,24 +135,24 @@ jobs:
         steps:
             - run: pwd
 """)
-    pipe.dispatch()
-    assert pipe.jobs["working_directory"].output == "/tmp"
+    wf.dispatch()
+    assert wf.jobs["working_directory"].output == "/tmp"
 
 
 def test_default_run() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     hello_run:
         name: "Hello, World!"
         steps:
             - run: echo 'Hello, World!'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["hello_run"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["hello_run"].output == "Hello, World!"
 
 
 def test_shell_run_bash() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     hello_sh:
         name: "Hello, World!"
@@ -160,12 +160,12 @@ jobs:
         steps:
             - run: echo 'Hello, World!'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["hello_sh"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["hello_sh"].output == "Hello, World!"
 
 
 def test_shell_run_python() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     hello_python:
         name: "Hello, World!"
@@ -175,27 +175,27 @@ jobs:
                 v = "World"
                 print(f'Hello, {v}!')
 """)
-    pipe.dispatch()
-    assert pipe.jobs["hello_python"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["hello_python"].output == "Hello, World!"
 
 
 def test_mandatory_attributes() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     mandatory_attributes:
         steps:
             - name: 'This step lacks a run property'
 """)
     try:
-        pipe.dispatch()
+        wf.dispatch()
         assert False
     except RequiredAttributeError:
         assert True
 
 
 def test_mandatory_inputs() -> None:
-    pipe = create_pipe("""
-env:
+    wf = create_workflow("""
+var:
     WORLD: "World!"
 
 jobs:
@@ -203,17 +203,17 @@ jobs:
         steps:
             - uses: core/expand-template
               with:
-                input: "Hello, ${{{{ env.WORLD }}}}"
+                input: "Hello, ${{{{ var.WORLD }}}}"
 """)
     try:
-        pipe.dispatch()
+        wf.dispatch()
         assert False
     except RequiredInputError:
         assert True
 
 
 def test_cwd() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 env:
     WORKING_DIR: /tmp
 
@@ -222,13 +222,13 @@ jobs:
         steps:
             - run: pwd
 """)
-    pipe.dispatch()
-    assert pipe.jobs["cwd"].output == "/tmp"
+    wf.dispatch()
+    assert wf.jobs["cwd"].output == "/tmp"
 
 
 def test_expansion() -> None:
-    pipe = create_pipe("""
-env:
+    wf = create_workflow("""
+var:
     HELLO: "Hello"
     WORLD: "World!"
     SMILEY: ":-)"
@@ -237,14 +237,14 @@ jobs:
     expansion:
         name: Test expansion
         steps:
-            - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
+            - run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["expansion"].output == "Hello World! :-)"
+    wf.dispatch()
+    assert wf.jobs["expansion"].output == "Hello World! :-)"
 
 
 def test_working_dir_expansion() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 var:
     PATH: "/tmp"
 
@@ -256,93 +256,96 @@ jobs:
         steps:
             - run: echo '${{ env.WORKING_DIR }}'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["expansion"].output == "/tmp"
+    wf.dispatch()
+    assert wf.jobs["expansion"].output == "/tmp"
 
 
 def test_values() -> None:
-    pipe = create_pipe("""
-env:
+    wf = create_workflow("""
+var:
     VALUE: 1
 
 jobs:
-    values:
+    test_job:
         name: Test values
         steps:
             - id: step-1
-              run: echo 'VALUE == ${{ env.VALUE }}'
+              run: echo 'VALUE == ${{ var.VALUE }}'
               set:
-                jobs.values.var.VALUE: 99  # Will be overridden by the next line
-                job.var.VALUE: 1
+                jobs.test_job.var.VALUE: 99  # Will be overridden by the next line
+                job.var.VALUE: 2
 """)
-    pipe.dispatch()
-    assert pipe.get_value("VALUE") == "1"
-    assert pipe.get_value("env.VALUE") == "1"
-    assert pipe.get_value("var.VALUE") is None
-
-    assert pipe.jobs["values"].output == "VALUE == 1"
-    assert pipe.get_value("jobs.values.output") == "VALUE == 1"
-
-    assert pipe.get_value("jobs.values.var.VALUE") == "1"
-    assert pipe.jobs["values"].get_value("var.VALUE") == "1"
-    assert pipe.jobs["values"].var["VALUE"] == "1"
-    assert pipe.jobs["values"].steps["step-1"].get_value("VALUE") == "1"
-    assert pipe.jobs["values"].steps["step-1"].get_value("job.var.VALUE") == "1"
+    wf.dispatch()
+    assert wf.get_value("var.VALUE") == "1"
+    assert wf.get_value("workflow.var.VALUE") == "1"
+    assert wf.get_value("workflow.jobs.test_job.var.VALUE") == "2"
+    assert wf.jobs["test_job"].get_value("var.VALUE") == "2"
+    assert wf.jobs["test_job"].steps["step-1"].get_value("var.VALUE") == "2"
+    assert wf.jobs["test_job"].steps["step-1"].get_value("job.var.VALUE") == "2"
+    assert wf.jobs["test_job"].get_value("var.VALUE") == "2"
+    assert wf.jobs["test_job"].get_value("job.var.VALUE") == "2"
 
 
 def test_set() -> None:
-    pipe = create_pipe("""
-env:
-    VALUE: 1
+    wf = create_workflow("""
+var:
+    VALUE: 42
 
 jobs:
-    set:
+    test_job:
         name: Test set
         steps:
-            - id: echo-step
+            - id: step-1
               run: |
-                echo 'VALUE == ${{ env.VALUE }}'
-              env:
-                  VALUE: 2
+                echo 'VALUE == ${{ var.VALUE }}'
               set:
-                  job.var.TEMP: 42
-                  var.STEP_SCOPE: 1
-                  pipe.var.PIPE_SCOPE: 1
-                  job.var.TEST_OUTPUT: ${{ output }}
+                  workflow.var.VALUE: 2
+                  job.var.COOL_YEAR: 1980
+                  jobs.test_job.var.VOUTPUT: ${{ output }}
 """)
-    pipe.dispatch()
-    assert pipe.jobs["set"].steps["echo-step"].output == "VALUE == 2"
-    assert pipe.jobs["set"].var["TEST_OUTPUT"] == "VALUE == 2"
-    assert pipe.get_value("VALUE") == "1"
-    assert pipe.get_value("jobs.set.var.TEMP") == "42"
-    assert pipe.get_value("STEP_SCOPE") is None
-    assert pipe.get_value("PIPE_SCOPE") == "1"
-    assert pipe.get_value("PIPE_SCOPE") == "1"
+    wf.dispatch()
+    assert wf.get_value("var.VALUE") == "2"
+    assert wf.get_value("jobs.test_job.var.COOL_YEAR") == "1980"
+    assert wf.jobs["test_job"].steps["step-1"].output == "VALUE == 42"
+    assert wf.jobs["test_job"].var["VOUTPUT"] == "VALUE == 42"
 
 
 def test_env_overriding() -> None:
-    pipe = create_pipe("""
-env:
+    wf = create_workflow("""
+var:
     HELLO: "Hello"
     WORLD: "World!"
     SMILEY: ":-("
 
 jobs:
-    override_test:
+    test_job:
+        var:
+            SMILEY: "xD"
         name: Test expansion
         steps:
-            - run: echo '${{ env.HELLO }} ${{ WORLD }} ${{ SMILEY }}'
-        env:
-            SMILEY: ":-DDDD"
+            - id: step-1
+              run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
+              var:
+                  SMILEY: ":-DDDD"
+            - id: step-2
+              run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
+
+    test_job_2:
+        name: Test expansion
+        steps:
+            - id: step-1
+              run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
 """)
-    pipe.dispatch()
-    assert pipe.jobs["override_test"].output == "Hello World! :-DDDD"
+    wf.dispatch()
+    assert wf.jobs["test_job"].steps["step-1"].output == "Hello World! :-DDDD"
+    assert wf.jobs["test_job"].steps["step-2"].output == "Hello World! xD"
+    assert wf.jobs["test_job_2"].steps["step-1"].output == "Hello World! :-("
 
 
 def test_expand_template() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
-        pipe = create_pipe(f"""
-env:
+        wf = create_workflow(f"""
+var:
     WORLD: "World!"
 
 jobs:
@@ -369,16 +372,16 @@ jobs:
                       aunque, por conjeturas verosímiles, se deja entender que se llamaba
                       Quejana. Pero esto importa poco a nuestro cuento; basta que en la narración
                       dél no se salga un punto de la verdad.
-                      Hello, ${{{{ WORLD }}}}
+                      Hello, ${{{{ var.WORLD }}}}
                   output_file: {temp_file.name}
     """)
-        pipe.dispatch()
-        assert pipe.jobs["expand_template"].output.endswith("Hello, World!")
+        wf.dispatch()
+        assert wf.jobs["expand_template"].output.endswith("Hello, World!")
         assert run(f"tail -n1 {temp_file.name}").stdout.strip() == "Hello, World!"
 
 
 def test_pass_env() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 env:
     WORLD: "World!"
 
@@ -388,12 +391,12 @@ jobs:
             - run: |
                   echo "Hello, $WORLD"
 """)
-    pipe.dispatch()
-    assert pipe.jobs["pass_env"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["pass_env"].output == "Hello, World!"
 
 
 def test_docker_pass_env() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 env:
     WORLD: "World!"
 
@@ -404,12 +407,12 @@ jobs:
             - run: |
                   echo "Hello, $WORLD"
 """)
-    pipe.dispatch()
-    assert pipe.jobs["pass_env"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["pass_env"].output == "Hello, World!"
 
 
 def test_docker_run() -> None:
-    pipe = create_pipe("""
+    wf = create_workflow("""
 jobs:
     docker_run:
         runs_on: docker://alpine:latest
@@ -417,15 +420,15 @@ jobs:
             - run: |
                   echo 'Hello, World!'
     """)
-    pipe.dispatch()
-    assert pipe.jobs["docker_run"].output == "Hello, World!"
+    wf.dispatch()
+    assert wf.jobs["docker_run"].output == "Hello, World!"
 
 
 def test_docker_file_upload() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")
         temp_file.flush()
-        pipe = create_pipe(f"""
+        wf = create_workflow(f"""
 jobs:
     file_upload:
         runs_on: docker://alpine:latest
@@ -436,8 +439,8 @@ jobs:
                   destination_file: /tmp/hello.txt
             - run: cat /tmp/hello.txt
     """)
-        pipe.dispatch()
-    assert pipe.jobs["file_upload"].output.strip() == "Hello, World!"
+        wf.dispatch()
+    assert wf.jobs["file_upload"].output.strip() == "Hello, World!"
 
 
 def test_docker_file_download() -> None:
@@ -445,7 +448,7 @@ def test_docker_file_download() -> None:
         temp_file.write(b"Hello, World!")
         temp_file.flush()
 
-        pipe = create_pipe(f"""
+        wf = create_workflow(f"""
 jobs:
     file_download:
         runs_on: docker://alpine:latest
@@ -457,7 +460,7 @@ jobs:
                   source_file: /tmp/hello.txt
                   destination_file: {temp_file.name}
     """)
-        pipe.dispatch()
+        wf.dispatch()
 
         with open(temp_file.name, "r") as f:
             assert f.read().strip() == "Hello, World!"

@@ -139,6 +139,7 @@ def read_file(host: str, file_path: str) -> bytes:
     b64 = run(f"cat {file_path} | base64", host).stdout.strip()
     return base64.b64decode(b64)
 
+
 def write_file(host: str, file_path: str, content: bytes) -> ProcessResult:
     b64 = base64.b64encode(content).decode()
     return run(f"echo {b64} | base64 -di - > {file_path}", host)

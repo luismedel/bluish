@@ -45,22 +45,171 @@ def get_obj_attr(obj: Any, name: str) -> tuple[bool, Any]:
     return (False, None)
 
 
-def traverse_obj(obj: Any, path: str) -> tuple[bool, Any]:
-    if not path:
-        return (True, obj)
+def get_step(ctx: "ContextNode") -> Optional["StepContext"]:
+    if isinstance(ctx, StepContext):
+        return ctx
+    return None
 
-    parent = obj.parent
 
-    parts = path.split(".")
-    while parts:
-        key = parts.pop(0)
-        found, obj = get_obj_attr(obj, key)
-        if not found:
-            if parent:
-                return traverse_obj(parent, path)
-            return (False, "")
+def get_job(ctx: "ContextNode") -> Optional["JobContext"]:
+    if isinstance(ctx, JobContext):
+        return ctx
+    elif isinstance(ctx, StepContext):
+        return ctx.job
+    return None
 
-    return (True, obj)
+
+def get_workflow(ctx: "ContextNode") -> Optional["WorkflowContext"]:
+    if isinstance(ctx, WorkflowContext):
+        return ctx
+    elif isinstance(ctx, JobContext):
+        return ctx.workflow
+    elif isinstance(ctx, StepContext):
+        return ctx.job.workflow
+    return None
+
+
+def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[bool, str]:
+    def get_from_dict(
+        ctx: ContextNode, dict_name: str, varname: str
+    ) -> tuple[bool, Any]:
+        values = getattr(ctx, dict_name, None)
+        if not values or varname not in values:
+            return (False, None)
+        return (True, values[varname])
+
+    def prepare_value(value: str | None) -> tuple[bool, str]:
+        if not value:
+            return (True, "")
+        else:
+            return (True, value if raw else ctx.expand_expr(value))
+
+    if "." not in name:
+        if name == "output":
+            return prepare_value(getattr(ctx, "output", None))
+    else:
+        root, varname = name.split(".", maxsplit=1)
+
+        if root in ("env", "var"):
+            varname = name[4:]
+            current: ContextNode | None = ctx
+            while current:
+                if root == "env":
+                    found, value = get_from_dict(current, "sys_env", varname)
+                    if not found:
+                        found, value = get_from_dict(current, "env", varname)
+                    if found:
+                        return prepare_value(value)
+                elif root == "var":
+                    found, value = get_from_dict(current, "var", varname)
+                    if found:
+                        return prepare_value(value)
+                current = current.parent
+        elif root == "workflow":
+            wf = get_workflow(ctx)
+            if not wf:
+                raise ValueError("Workflow reference not found")
+            return try_get_value(wf, varname, raw)
+        elif root == "jobs":
+            wf = get_workflow(ctx)
+            if not wf:
+                raise ValueError("Workflow reference not found")
+            job_id, varname = varname.split(".", maxsplit=1)
+            job = wf.jobs.get(job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            return try_get_value(job, varname, raw)
+        elif root == "job":
+            job = get_job(ctx)
+            if not job:
+                raise ValueError("Job reference not found")
+            return try_get_value(job, varname, raw)
+        elif root == "steps":
+            job = get_job(ctx)
+            if not job:
+                raise ValueError("Job reference not found")
+            step_id, varname = varname.split(".", maxsplit=1)
+            step = job.steps.get(step_id)
+            if not step:
+                raise ValueError(f"Step {step_id} not found")
+            return try_get_value(step, varname, raw)
+        elif root == "step":
+            step = get_step(ctx)
+            if not step:
+                raise ValueError("Step reference not found")
+            return try_get_value(step, varname, raw)
+        elif root == "inputs":
+            step = get_step(ctx)
+            if not step:
+                raise ValueError("Step reference not found")
+            found, value = get_from_dict(step, "inputs", varname)
+            if found:
+                return prepare_value(value)
+
+    return (False, "")
+
+
+def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
+    def set_in_dict(
+        ctx: "ContextNode", dict_name: str, varname: str, value: str
+    ) -> bool:
+        values = getattr(ctx, dict_name, None)
+        if values is None:
+            return False
+        values[varname] = value
+        return True
+
+    if "." not in name:
+        if name == "output":
+            setattr(ctx, "output", value)
+            return True
+    else:
+        root, varname = name.split(".", maxsplit=1)
+
+        if root == "env":
+            return set_in_dict(ctx, "env", name[4:], value)
+        elif root == "var":
+            return set_in_dict(ctx, "var", name[4:], value)
+        elif root == "workflow":
+            wf = get_workflow(ctx)
+            if not wf:
+                return False
+            return try_set_value(wf, varname, value)
+        elif root == "jobs":
+            wf = get_workflow(ctx)
+            if not wf:
+                return False
+            job_id, varname = varname.split(".", maxsplit=1)
+            job = wf.jobs.get(job_id)
+            if not job:
+                raise ValueError(f"Job {job_id} not found")
+            return try_set_value(job, varname, value)
+        elif root == "job":
+            job = get_job(ctx)
+            if not job:
+                return False
+            return try_set_value(job, varname, value)
+        elif root == "steps":
+            job = get_job(ctx)
+            if not job:
+                return False
+            step_id, varname = varname.split(".", maxsplit=1)
+            step = job.steps.get(step_id)
+            if not step:
+                raise ValueError(f"Step {step_id} not found")
+            return try_set_value(step, varname, value)
+        elif root == "step":
+            step = get_step(ctx)
+            if not step:
+                return False
+            return try_set_value(step, varname, value)
+        elif root == "inputs":
+            step = get_step(ctx)
+            if not step:
+                return False
+            return set_in_dict(step, "inputs", varname, value)
+
+    return False
 
 
 class VariableExpandError(Exception):
@@ -107,7 +256,7 @@ class ContextNode:
         self.attrs.ensure_property("var", {})
 
         self.env = dict(self.attrs.env)
-        self.var = dict(self.attrs.env)
+        self.var = dict(self.attrs.var)
 
         self.id: str | None = self.attrs.id
 
@@ -130,9 +279,7 @@ class ContextNode:
             if match.group(0).startswith("$$"):
                 return match.group(0)[1:]
             try:
-                found, v = self.try_get_value(match.group(1), raw=True)
-                if not found:
-                    return ""
+                v = self.get_value(match.group(1), raw=True)
                 return self.expand_expr(v, _depth=_depth + 1)
             except VariableExpandError:
                 if _depth > 1:
@@ -143,53 +290,10 @@ class ContextNode:
 
         return self.VAR_REGEX.sub(replace_match, value)
 
-    def try_get_value(self, name: str, raw: bool = False) -> tuple[bool, str]:
-        """
-        Tries to get a value from the context.
-        - If the name is not a fully qualified name (fqn), it will try to get it from the vars/env properties.
-        - If the name is a fqn, it will try to traverse the contex to find the value.
-        """
-
-        def try_get_from_dict(dict_name: str, varname: str) -> tuple[bool, str]:
-            """Tries to get a variable from a dict property (env or var) up into the parent chain"""
-            obj: ContextNode | None = self
-            while obj is not None:
-                _dict: dict[str, Any] | None
-                _dict = getattr(obj, dict_name, None)
-                if _dict and varname in _dict:
-                    result = str(_dict[varname]) if raw else self.expand_expr(_dict[varname])
-                    return (True, result)
-                obj = obj.parent
-            return (False, "")
-
-        if name.startswith("env."):
-            for d in ("env", "sys_env"):
-                found, value = try_get_from_dict(d, name[4:])
-                if found:
-                    return (True, value)
-            return (False, "")
-        elif name.startswith("var."):
-            return try_get_from_dict("var", name[4:])
-        elif "." not in name:
-            # Not a fqn? Let's try to get it from env/var
-            for d in ("env", "sys_env", "var"):
-                found, value = try_get_from_dict(d, name)
-                if found:
-                    return (True, value)
-            return traverse_obj(self, name)
-
-        path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
-        found, obj = traverse_obj(self, path)
-        if not found:
-            return (False, "")
-        found, value = get_obj_attr(obj, varname)
-        if not found:
-            return (False, "")
-        value = str(value) if raw else self.expand_expr(value)
-        return (True, value if raw else self.expand_expr(value))
-
-    def get_value(self, name: str, default: Any = None) -> str | None:
-        found, value = self.try_get_value(name)
+    def get_value(self, name: str, default: Any = None, raw: bool = False) -> str | None:
+        found, value = try_get_value(self, name, raw=raw)
+        if not found and default is None:
+            raise ValueError(f"Variable {name} not found")
         return default if not found else value
 
     def get_bool_value(self, name: str, default: bool = False) -> bool:
@@ -199,16 +303,8 @@ class ContextNode:
         return value.lower() in ("true", "1")
 
     def set_value(self, name: str, value: str) -> None:
-        if "." not in name:
-            # Not a fqn? Let's treat it as a env variable
-            self.env[name] = value
-        else:
-            path, varname = name.rsplit(".", maxsplit=1) if "." in name else ("", name)
-            found, obj = traverse_obj(self, path)
-            if not found:
-                raise ValueError(f"Variable {name} not found")
-
-            set_obj_attr(obj, varname, value)
+        if not try_set_value(self, name, value):
+            raise ValueError(f"Invalid variable name: {name}")
 
     def dispatch(self) -> ProcessResult | None:
         pass
@@ -222,7 +318,7 @@ class ContextNode:
         return default
 
 
-class PipeContext(ContextNode):
+class WorkflowContext(ContextNode):
     def __init__(self, definition: dict[str, Any]) -> None:
         super().__init__(None, definition)
 
@@ -257,10 +353,10 @@ class PipeContext(ContextNode):
 
 
 class JobContext(ContextNode):
-    def __init__(self, parent: PipeContext, id: str, definition: dict[str, Any]):
+    def __init__(self, parent: WorkflowContext, id: str, definition: dict[str, Any]):
         super().__init__(parent, definition)
 
-        self.pipe = parent
+        self.workflow = parent
         self.id = id
         self.output: str = ""
 
@@ -268,7 +364,7 @@ class JobContext(ContextNode):
 
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("can_fail", False)
-        
+
         self.env = {
             **parent.env,
             **self.attrs.env,
@@ -383,7 +479,7 @@ class JobContext(ContextNode):
 
         if echo_command:
             if host:
-                logging.info(f"At @{host}")
+                logging.info(f"In @{host}:")
             logging.info(decorate_for_log(command))
 
         if can_fail is None:
@@ -447,7 +543,7 @@ class StepContext(ContextNode):
     def __init__(self, parent: JobContext, definition: dict[str, Any]):
         super().__init__(parent, definition)
 
-        self.pipe = parent.pipe
+        self.pipe = parent.workflow
         self.job = parent
         self.output: str = ""
 

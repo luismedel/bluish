@@ -1,5 +1,5 @@
 
-from test.utils import create_pipe
+from test.utils import create_workflow
 
 import pytest
 from bluish.core import init_commands
@@ -11,7 +11,7 @@ def initialize_commands():
 
 
 def test_docker_checkout() -> None:
-    pipe = create_pipe("""
+    pipe = create_workflow("""
 jobs:
   checkout:
     runs_on: docker://ubuntu:latest
@@ -27,7 +27,7 @@ jobs:
 
 
 def test_docker_checkout_alpine() -> None:
-    pipe = create_pipe("""
+    pipe = create_workflow("""
 jobs:
   checkout:
     runs_on: docker://alpine:latest
