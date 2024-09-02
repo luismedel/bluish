@@ -4,6 +4,9 @@ var:
 
 jobs:
   publish:
+
+    name: Publishes the latest release of Bluish 
+
     runs_on: docker://python:3.12-alpine
     steps:
       - run: |
@@ -15,30 +18,25 @@ jobs:
 
       - name: Download latest published version
         run: |
-          curl https://pypi.org/pypi/bluish/json | jq -r .info.version
+          curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version
         set:
           workflow.var.PYPI_VERSION: ${{ output }}
 
       - name: Check if we got a valid PYPI_VERSION
         run: |
-          if [ "${{ var.PYPI_VERSION }}" == "" ]; then
-            false
-          fi
+          [ "${{ var.PYPI_VERSION }}" != "" ]
 
       - name: Check if upload is needed
         run: |
-          if [ "${{ var.PROJECT_VERSION }}" == "${{ var.PYPI_VERSION }}" ]; then
-            echo "Upload not needed. Already on ${{ var.PYPI_VERSION }}"
-            false
-          fi
+          [ "${{ var.PROJECT_VERSION }}" != "${{ var.PYPI_VERSION }}" ]
 
-      - name: Update pyproject.toml
+      - name: Update metadata in pyproject.toml
         uses: core/expand-template
         with:
           input_file: ./templates/pyproject.toml.template
           output_file: ./pyproject.toml
 
-      - name: Update src/bluish/__main__.py
+      - name: Update metadata in src/bluish/__main__.py
         uses: core/expand-template
         with:
           input_file: ./templates/__main__.py.template
@@ -51,6 +49,7 @@ jobs:
 
       - name: Prepare credentials
         uses: core/upload-file
+        is_sensitive: true
         with:
           source_file: ~/.pypirc
           destination_file: ~/.pypirc
