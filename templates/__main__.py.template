@@ -1,0 +1,2 @@
+
+PROJECT_VERSION = "${{ var.PROJECT_VERSION }}"

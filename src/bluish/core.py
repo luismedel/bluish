@@ -500,7 +500,7 @@ class JobContext(ContextNode):
             b64 = base64.b64encode(command.encode()).decode()
             command = f"echo {b64} | base64 -di - | {interpreter}"
 
-        working_dir = context.get_value("env.WORKING_DIR")
+        working_dir = context.get_value("env.WORKING_DIR", "")
         if working_dir:
             logging.debug(f"Working dir: {working_dir}")
             command = f'cd "{working_dir}" && {command}'

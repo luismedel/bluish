@@ -3,6 +3,7 @@ import os
 import click
 import yaml
 
+from bluish.__main__ import PROJECT_VERSION
 from bluish.core import (
     JobContext,
     ProcessError,
@@ -54,7 +55,7 @@ def dispatch_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
             return
         deps[job.id] = []
         for dep in job.attrs.depends_on or []:
-            dep_job = available_jobs.get(dep)
+            dep_job = available_jobs.get(dep.strip())
             if not dep_job:
                 fatal(f"Invalid dependency job id: {dep}")
             deps[job.id].append(dep_job)
@@ -97,6 +98,7 @@ def dispatch_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
     default="INFO",
     help="Log level",
 )
+@click.version_option(PROJECT_VERSION)
 def blu_cli(
     job_id: str,
     no_deps: bool,
@@ -127,6 +129,7 @@ def blu_cli(
     default="INFO",
     help="Log level",
 )
+@click.version_option(PROJECT_VERSION)
 @click.pass_context
 def bluish_cli(
     ctx: click.Context,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bluish"
-version = "${{ PROJECT_VERSION }}"
+version = "${{ var.PROJECT_VERSION }}"
 authors = [
   { name="Luis Medel", email="luis@luismedel.com" },
 ]
@@ -26,6 +26,9 @@ classifiers = [
 
 [project.urls]
 "Homepage" = "https://github.com/luismedel/bluish"
+
+[tool.setuptools.package-data]
+bluish = ["py.typed"]
 
 [tool.pytest.ini_options]
 pythonpath = [
