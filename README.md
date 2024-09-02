@@ -17,6 +17,7 @@ If you know other CI/CD tools, the following yaml will look more than familiar t
 ```yaml
 var:
   PYTHON_VERSION: "3.11"
+  PYTEST_RUNNERS: 2
 
 jobs:
   lint:
@@ -27,7 +28,7 @@ jobs:
           ruff check src/ test/
           echo ""
           mypy --version
-          mypy --ignore-missing-imports --python-version=${{ PYTHON_VERSION }} src/ test/
+          mypy --ignore-missing-imports --python-version=${{ var.PYTHON_VERSION }} src/ test/
 
   fix:
     name: Reformats the code using ruff
@@ -44,7 +45,7 @@ jobs:
     name: Run tests
     steps:
       - run: |
-          pytest -n 2
+          pytest -n ${{ var.PYTEST_RUNNERS }}
 ```
 
 Note that the similarity with other tools like Github Actions is very superficial. Please, refer to the [project docs](https://github.com/luismedel/bluish/wiki) for more details about the _huge_ differences.
