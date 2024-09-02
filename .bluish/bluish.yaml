@@ -1,6 +1,6 @@
 
 var:
-  PROJECT_VERSION: "0.0.2"
+  PROJECT_VERSION: "0.0.3"
 
 jobs:
   publish:
