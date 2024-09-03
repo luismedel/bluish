@@ -1,2 +1,2 @@
 
-PROJECT_VERSION = "${{ var.PROJECT_VERSION }}"
+PROJECT_VERSION = "${{ var.project_version }}"

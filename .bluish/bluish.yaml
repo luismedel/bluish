@@ -1,6 +1,6 @@
 
 var:
-  PROJECT_VERSION: "0.0.4"
+  project_version: "0.0.5"
 
 jobs:
   publish:
@@ -12,14 +12,14 @@ jobs:
     steps:
       - run: |
           apk update && apk add jq curl
-          PYPI_VERSION=$(curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version)
-          echo "PYPI_VERSION=$PYPI_VERSION" >> "$BLUISH_OUTPUT"
+          pypi_version=$(curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version)
+          echo "pypi_version=$pypi_version" >> "$BLUISH_OUTPUT"
         set:
-          workflow.var.PYPI_VERSION: ${{ outputs.PYPI_VERSION }}
+          workflow.var.pypi_version: ${{ outputs.pypi_version }}
 
       - name: Check if we got a valid PYPI_VERSION
         run: |
-          [ "${{ var.PYPI_VERSION }}" != "" ]
+          [ "${{ var.pypi_version }}" != "" ]
 
       - uses: git/checkout
         with:
@@ -27,7 +27,7 @@ jobs:
 
       - name: Check if upload is needed
         run: |
-          [ "${{ var.PROJECT_VERSION }}" != "${{ var.PYPI_VERSION }}" ]
+          [ "${{ var.project_version }}" != "${{ var.pypi_version }}" ]
 
       - name: Update metadata in pyproject.toml
         uses: core/expand-template
