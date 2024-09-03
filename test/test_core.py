@@ -380,6 +380,26 @@ jobs:
         assert run(f"tail -n1 {temp_file.name}").stdout.strip() == "Hello, World!"
 
 
+def test_capture() -> None:
+    wf = create_workflow("""
+jobs:
+    test_job:
+        steps:
+            - id: step_1
+              run: |
+                  echo "OUT=value 1" >> "$BLUISH_OUTPUT"
+            - id: step_2
+              run: |
+                  echo "OUT=value 2" >> "$BLUISH_OUTPUT"
+              set:
+                  workflow.var.OUT: ${{ outputs.OUT }}
+""")
+    wf.dispatch()
+    assert wf.get_value("jobs.test_job.steps.step_1.outputs.OUT") == "value 1"
+    assert wf.get_value("jobs.test_job.steps.step_2.outputs.OUT") == "value 2"
+    assert wf.get_value("var.OUT") == "value 2"
+
+
 def test_pass_env() -> None:
     wf = create_workflow("""
 env:

@@ -1,13 +1,21 @@
 import base64
 import logging
 import os
+import random
 import re
 from functools import wraps
 from typing import Any, Callable, Dict, Never, Optional, TypeVar, Union
 
 from dotenv import dotenv_values
 
-from bluish.process import ProcessError, ProcessResult, cleanup_host, prepare_host, run
+from bluish.process import (
+    ProcessError,
+    ProcessResult,
+    cleanup_host,
+    prepare_host,
+    read_file,
+    run,
+)
 from bluish.utils import decorate_for_log
 
 DEFAULT_ACTION = "core/default-action"
@@ -23,6 +31,9 @@ SHELLS = {
 
 
 DEFAULT_SHELL = "sh"
+
+VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
+CAPTURE_REGEX = re.compile(r"^\s*capture\:(.+)$")
 
 
 def fatal(message: str, exit_code: int = 1) -> Never:
@@ -145,6 +156,13 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
             found, value = get_from_dict(step, "inputs", varname)
             if found:
                 return prepare_value(value)
+        elif root == "outputs":
+            node = get_step(ctx) or get_job(ctx)
+            if not node:
+                return (False, "")
+            found, value = get_from_dict(node, "outputs", varname)
+            if found:
+                return prepare_value(value)
 
     return (False, "")
 
@@ -208,6 +226,11 @@ def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
             if not step:
                 return False
             return set_in_dict(step, "inputs", varname, value)
+        elif root == "outputs":
+            node = get_step(ctx) or get_job(ctx)
+            if not node:
+                return False
+            return set_in_dict(node, "outputs", varname, value)
 
     return False
 
@@ -246,8 +269,6 @@ class DictAttrs:
 
 
 class ContextNode:
-    VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
-
     def __init__(self, parent: Optional["ContextNode"], definition: dict[str, Any]):
         self.parent = parent
         self.attrs = DictAttrs(definition)
@@ -288,9 +309,11 @@ class ContextNode:
                     f"Too much recursion expanding {match.group(1)} in '{value}'"
                 )
 
-        return self.VAR_REGEX.sub(replace_match, value)
+        return VAR_REGEX.sub(replace_match, value)
 
-    def get_value(self, name: str, default: Any = None, raw: bool = False) -> str | None:
+    def get_value(
+        self, name: str, default: Any = None, raw: bool = False
+    ) -> str | None:
         found, value = try_get_value(self, name, raw=raw)
         if not found and default is None:
             raise ValueError(f"Variable {name} not found")
@@ -375,9 +398,13 @@ class JobContext(ContextNode):
             **self.attrs.var,
         }
 
+        self.outputs = dict(self.attrs.outputs or {})
+
         self.steps: dict[str, StepContext] = {}
         for i, step in enumerate(self.attrs.steps):
-            key = step["id"] if "id" in step else f"steps_{i}"
+            if "id" not in step:
+                step["id"] = f"steps_{i}"
+            key = step["id"]
             self.steps[key] = StepContext(self, step)
 
     def can_dispatch(self, context: Union["StepContext", "JobContext"]) -> bool:
@@ -438,8 +465,13 @@ class JobContext(ContextNode):
     ) -> ProcessResult:
         command = context.expand_expr(command).strip()
 
-        # Build the env map
+        # Define where to capture the output with the >> operator
+        capture_filename = (
+            f"/tmp/bluish-capture-{self.id}-{hex(random.randint(0, 65535))}.txt"
+        )
+        logging.debug(f"Capture file: {capture_filename}")
 
+        # Build the env map
         env = {}
 
         ctx: ContextNode | None = context
@@ -449,6 +481,13 @@ class JobContext(ContextNode):
                     continue
                 env[k] = ctx.expand_expr(v)
             ctx = ctx.parent
+
+        if "BLUISH_OUTPUT" in env:
+            logging.warning(
+                "BLUISH_OUTPUT is a reserved environment variable. Overwriting it."
+            )
+
+        env["BLUISH_OUTPUT"] = capture_filename
 
         env_str = "; ".join([f'{k}="{v}"' for k, v in env.items()]).strip()
         if env_str:
@@ -529,6 +568,10 @@ class JobContext(ContextNode):
             if echo_output:
                 logging.warning(msg)
 
+        for line in read_file(host, capture_filename).decode().splitlines():
+            k, v = line.split("=", maxsplit=1)
+            context.set_value(f"outputs.{k}", v)
+
         return result
 
     def run_internal_command(
@@ -553,7 +596,10 @@ class StepContext(ContextNode):
         self.attrs.ensure_property("can_fail", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
 
+        self.id = self.attrs.id
+
         self.inputs = dict(self.attrs._with or {})
+        self.outputs = dict(self.attrs.outputs or {})
 
     def dispatch(self) -> ProcessResult | None:
         if not self.job.can_dispatch(self):

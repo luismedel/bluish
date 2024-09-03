@@ -135,7 +135,7 @@ def run(
     return ProcessResult.from_subprocess_result(result)
 
 
-def read_file(host: str, file_path: str) -> bytes:
+def read_file(host: str | None, file_path: str) -> bytes:
     b64 = run(f"cat {file_path} | base64", host).stdout.strip()
     return base64.b64decode(b64)
 
