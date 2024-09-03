@@ -10,7 +10,7 @@ Why use a rock-solid tool when you can code your own crappy _Make on steroids_ a
 - Githubactions-esque philosphy, but way simpler. In fact, Bluish is nearer to Make than to GA.
 - Simple as fuck. I only add new actions whenever I need them.
 
-## How do Bluish pipelines look?
+## How do Bluish workflows look?
 
 If you know other CI/CD tools, the following yaml will look more than familiar to you and you probably don't need an explanation.
 

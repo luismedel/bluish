@@ -11,7 +11,7 @@ def initialize_commands():
 
 
 def test_docker_checkout() -> None:
-    pipe = create_workflow("""
+    wf = create_workflow("""
 jobs:
   checkout:
     runs_on: docker://ubuntu:latest
@@ -22,12 +22,12 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    pipe.dispatch()
-    assert pipe.jobs["checkout"].output == "# Bluish"
+    wf.dispatch()
+    assert wf.jobs["checkout"].output == "# Bluish"
 
 
 def test_docker_checkout_alpine() -> None:
-    pipe = create_workflow("""
+    wf = create_workflow("""
 jobs:
   checkout:
     runs_on: docker://alpine:latest
@@ -38,5 +38,5 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    pipe.dispatch()
-    assert pipe.jobs["checkout"].output == "# Bluish"
+    wf.dispatch()
+    assert wf.jobs["checkout"].output == "# Bluish"

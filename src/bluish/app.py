@@ -15,6 +15,8 @@ from bluish.core import (
 
 
 def locate_yaml(name: str) -> str | None:
+    """Locates the workflow file."""
+    
     if not name:
         name = "bluish"
     if os.path.exists(f"{name}.yaml"):
@@ -24,7 +26,9 @@ def locate_yaml(name: str) -> str | None:
     return None
 
 
-def pipe_from_file(file: str) -> WorkflowContext:
+def workflow_from_file(file: str) -> WorkflowContext:
+    """Loads the workflow from a file."""
+    
     yaml_contents: str = ""
     try:
         with open(file, "r") as yaml_file:
@@ -33,13 +37,13 @@ def pipe_from_file(file: str) -> WorkflowContext:
         pass
 
     if not yaml_contents:
-        fatal("No pipeline file found.")
+        fatal("No workflow file found.")
 
     return WorkflowContext(yaml.safe_load(yaml_contents))
 
 
-def dispatch_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
-    available_jobs = pipe.jobs
+def dispatch_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
+    available_jobs = wf.jobs
 
     job = available_jobs.get(job_id)
     if not job:
@@ -113,10 +117,10 @@ def blu_cli(
 
     yaml_path = locate_yaml(file)
     if not yaml_path:
-        fatal("No pipeline file found.")
+        fatal("No workflow file found.")
 
-    pipe = pipe_from_file(yaml_path)
-    dispatch_job(pipe, job_id, no_deps)
+    wf = workflow_from_file(yaml_path)
+    dispatch_job(wf, job_id, no_deps)
 
 
 @click.group("bluish")
@@ -142,7 +146,7 @@ def bluish_cli(
     yaml_contents: str = ""
     yaml_path = file or locate_yaml("")
     if not yaml_path:
-        fatal("No pipeline file found.")
+        fatal("No workflow file found.")
 
     try:
         with open(yaml_path, "r") as yaml_file:
@@ -151,19 +155,19 @@ def bluish_cli(
         pass
 
     if not yaml_contents:
-        fatal("No pipeline file found.")
+        fatal("No workflow file found.")
 
-    pipe = WorkflowContext(yaml.safe_load(yaml_contents))
-    ctx.obj = pipe
+    wf = WorkflowContext(yaml.safe_load(yaml_contents))
+    ctx.obj = wf
 
 
 @bluish_cli.command("list")
 @click.pass_obj
-def list_jobs(pipe: WorkflowContext) -> None:
-    available_jobs = pipe.jobs
+def list_jobs(wf: WorkflowContext) -> None:
+    available_jobs = wf.jobs
 
     if len(available_jobs) == 0:
-        fatal("No jobs found in pipeline file.")
+        fatal("No jobs found in workflow file.")
 
     ids = []
     names = []
@@ -186,8 +190,8 @@ def list_jobs(pipe: WorkflowContext) -> None:
 @click.argument("job_id", type=str, required=True)
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.pass_obj
-def run_job(pipe: WorkflowContext, job_id: str, no_deps: bool) -> None:
-    dispatch_job(pipe, job_id, no_deps)
+def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
+    dispatch_job(wf, job_id, no_deps)
 
 
 if __name__ == "__main__":

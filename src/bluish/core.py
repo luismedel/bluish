@@ -586,7 +586,7 @@ class StepContext(ContextNode):
     def __init__(self, parent: JobContext, definition: dict[str, Any]):
         super().__init__(parent, definition)
 
-        self.pipe = parent.workflow
+        self.workflow = parent.workflow
         self.job = parent
         self.output: str = ""
 
@@ -633,12 +633,17 @@ def action(
     required_attrs: list[str] | None = None,
     required_inputs: list[str] | None = None,
 ) -> Any:
+    """Defines a new action.
+    
+    Controls which attributes and inputs are required for the action to run.
+    """
     def inner(
         func: Callable[[StepContext], ProcessResult]
     ) -> Callable[[StepContext], ProcessResult]:
         @wraps(func)
         def wrapper(step: StepContext) -> ProcessResult:
             def exists(key: str, values: dict) -> bool:
+                """Checks if a key (or pipe-separated alternative keys) exists in a dictionary."""
                 return (
                     "|" in key and any(i in values for i in key.split("|"))
                 ) or key in values
@@ -680,8 +685,8 @@ def init_logging(level_name: str) -> None:
 
 
 def init_commands() -> None:
-    import bluish.core_commands  # noqa
-    import bluish.docker_commands  # noqa
-    import bluish.git_commands  # noqa
+    import bluish.commands.core  # noqa
+    import bluish.commands.docker  # noqa
+    import bluish.commands.git  # noqa
 
     pass

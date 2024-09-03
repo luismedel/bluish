@@ -5,12 +5,16 @@ from typing import Callable, Optional
 
 
 class ProcessError(Exception):
+    """An error that occurred while running a process."""
+
     def __init__(self, result: Optional["ProcessResult"], message: str | None = None):
         super().__init__(message)
         self.result = result
 
 
 class ProcessResult(subprocess.CompletedProcess[str]):
+    """The result of a process execution."""
+    
     def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0):
         self.stdout = stdout
         self.stderr = stderr
@@ -36,6 +40,8 @@ def _escape_command(command: str) -> str:
 
 
 def _get_docker_pid(host: str) -> str:
+    """Gets the container id from the container name or id."""
+    
     docker_pid = run(f"docker ps -f name={host} -qa").stdout.strip()
     if not docker_pid:
         docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
@@ -46,6 +52,8 @@ def _get_docker_pid(host: str) -> str:
 
 
 def prepare_host(host: str | None) -> str | None:
+    """Prepares a host for running commands."""
+
     if host and host.startswith("docker://"):
         host = host[9:]
         docker_pid = _get_docker_pid(host)
@@ -56,6 +64,8 @@ def prepare_host(host: str | None) -> str | None:
 
 
 def cleanup_host(host: str | None) -> None:
+    """Stops and removes a container if it was started by the process module."""
+
     if not host:
         return
 
@@ -118,6 +128,16 @@ def run(
     stdout_handler: Callable[[str], None] | None = None,
     stderr_handler: Callable[[str], None] | None = None,
 ) -> ProcessResult:
+    """Runs a command on a host and returns the result.
+
+    - `host` can be `None` (or empty) for the local host, `ssh://[user@]<host>` for an SSH host
+    or `docker://<container>` for a running Docker container.
+    - `stdout_handler` and `stderr_handler` are optional functions that are called
+    with the output of the command as it is produced.
+    
+    Returns a `ProcessResult` object with the output of the command.
+    """
+
     command = _escape_command(command)
 
     if host and host.startswith("ssh://"):
@@ -136,10 +156,14 @@ def run(
 
 
 def read_file(host: str | None, file_path: str) -> bytes:
+    """Reads a file from a host and returns its content as bytes."""
+
     b64 = run(f"cat {file_path} | base64", host).stdout.strip()
     return base64.b64decode(b64)
 
 
 def write_file(host: str, file_path: str, content: bytes) -> ProcessResult:
+    """Writes content to a file on a host."""
+
     b64 = base64.b64encode(content).decode()
     return run(f"echo {b64} | base64 -di - > {file_path}", host)
