@@ -4,7 +4,7 @@ import os
 import random
 import re
 from functools import wraps
-from typing import Any, Callable, Dict, Never, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Never, Optional, TypeVar, Union, cast
 
 from dotenv import dotenv_values
 
@@ -332,11 +332,11 @@ class ContextNode:
     def dispatch(self) -> ProcessResult | None:
         pass
 
-    def get_inherited_attr(self, name: str, default: Any = None) -> Any:
+    def get_inherited_attr(self, name: str, default: TResult = None) -> TResult:
         obj: ContextNode | None = self
         while obj is not None:
             if not hasattr(obj.attrs, name):
-                return getattr(obj.attrs, name)
+                return cast(TResult, getattr(obj.attrs, name))
             obj = obj.parent
         return default
 
@@ -386,6 +386,9 @@ class JobContext(ContextNode):
         self.runs_on_host: str | None = None
 
         self.attrs.ensure_property("steps", [])
+        self.attrs.ensure_property("echo_commands", True)
+        self.attrs.ensure_property("echo_output", True)
+        self.attrs.ensure_property("is_sensitive", False)
         self.attrs.ensure_property("can_fail", False)
 
         self.env = {
@@ -463,6 +466,23 @@ class JobContext(ContextNode):
         echo_command: bool | None = None,
         echo_output: bool | None = None,
     ) -> ProcessResult:
+        host = self.runs_on_host
+
+        if echo_command is None:
+            echo_command = self.get_inherited_attr("echo_commands", True)
+
+        if echo_output is None:
+            echo_output = context.get_inherited_attr("echo_output", True)
+
+        if context.get_inherited_attr("is_sensitive", False):
+            echo_command = False
+            echo_output = False
+
+        if echo_command:
+            if host:
+                logging.info(f"In @{host}:")
+            logging.info(decorate_for_log(command))
+
         command = context.expand_expr(command).strip()
 
         # Define where to capture the output with the >> operator
@@ -492,34 +512,6 @@ class JobContext(ContextNode):
         env_str = "; ".join([f'{k}="{v}"' for k, v in env.items()]).strip()
         if env_str:
             command = f"{env_str}; {command}"
-
-        if echo_command is None:
-            echo_command = (
-                self.get_inherited_attr("echo_commands", True)
-                if self.attrs.echo_command is None
-                else self.attrs.echo_command
-            )
-
-        if echo_output is None:
-            echo_output = (
-                context.get_inherited_attr("echo_output", True)
-                if self.attrs.echo_output is None
-                else self.attrs.echo_output
-            )
-
-        if context.get_inherited_attr("is_sensitive", False):
-            echo_command = False
-            echo_output = False
-
-        assert echo_command is not None
-        assert echo_output is not None
-
-        host = self.runs_on_host
-
-        if echo_command:
-            if host:
-                logging.info(f"In @{host}:")
-            logging.info(decorate_for_log(command))
 
         if can_fail is None:
             can_fail = (
@@ -592,7 +584,9 @@ class StepContext(ContextNode):
 
         self.attrs.ensure_property("name", "")
         self.attrs.ensure_property("uses", DEFAULT_ACTION)
-        self.attrs.ensure_property("if", None)
+        self.attrs.ensure_property("echo_commands", True)
+        self.attrs.ensure_property("echo_output", True)
+        self.attrs.ensure_property("is_sensitive", False)
         self.attrs.ensure_property("can_fail", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
 
