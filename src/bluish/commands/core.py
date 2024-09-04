@@ -1,13 +1,25 @@
-import base64
 import os
 
-from bluish.core import ProcessResult, StepContext, action
-from bluish.process import ProcessError
+from bluish.core import StepContext, action, read_file, write_file
+from bluish.logging import error, info
+from bluish.process import ProcessResult
 
 
 @action("core/default-action", required_attrs=["run"])
 def generic_run(step: StepContext) -> ProcessResult:
-    return step.job.run_command(step.attrs.run, step)
+    command = step.attrs.run.strip()
+
+    echo_commands = step.get_inherited_attr("echo_commands", True)
+    echo_output = step.get_inherited_attr("echo_output", True)
+    assert echo_commands is not None
+    assert echo_output is not None
+
+    command = step.expand_expr(command)
+
+    if echo_commands:
+        info(step, command)
+
+    return step.job.exec(command, step, stream_output=echo_output)
 
 
 @action("core/expand-template", required_inputs=["input|input_file", "output_file"])
@@ -16,26 +28,24 @@ def expand_template(step: StepContext) -> ProcessResult:
 
     template_content: str
     if "input_file" in inputs:
-        template_file = step.expand_expr(inputs["input_file"])
-        b64 = step.job.run_internal_command(
-            f"cat {template_file} | base64", step
-        ).stdout.strip()
-        template_content = base64.b64decode(b64).decode()
+        template_file = inputs["input_file"]
+
+        info(step, f"Reading template file: {template_file}...")
+        template_content = read_file(step, template_file).decode()
     else:
         template_content = inputs["input"]
 
     expanded_content = step.expand_expr(template_content)
 
-    output_file = step.expand_expr(inputs.get("output_file"))
+    output_file = inputs.get("output_file")
     if output_file:
-        b64 = base64.b64encode(expanded_content.encode()).decode()
-        step.job.run_internal_command(
-            f'echo "{b64}" | base64 -di - > {output_file}', step
-        )
+        info(step, f"Writing expanded content to: {output_file}...")
+        write_file(step, output_file, expanded_content.encode())
 
         if "chmod" in inputs:
             permissions = inputs["chmod"]
-            _ = step.job.run_command(f"chmod {permissions} {output_file}", step)
+            info(step, f"Setting permissions to {permissions} on {output_file}...")
+            _ = step.job.exec(f"chmod {permissions} {output_file}", step)
 
     return ProcessResult(stdout=expanded_content)
 
@@ -46,20 +56,31 @@ def upload_file(step: StepContext) -> ProcessResult:
 
     contents: str
 
-    source_file = step.expand_expr(inputs["source_file"])
+    source_file = inputs["source_file"]
     source_file = os.path.expanduser(source_file)
+
+    info(step, f"Reading file: {source_file}...")
     with open(source_file, "r") as f:
         contents = f.read()
-    b64 = base64.b64encode(contents.encode()).decode()
+    info(step, f" - Read {len(contents)} bytes.")
 
-    destination_file = step.expand_expr(inputs.get("destination_file"))
-    result = step.job.run_internal_command(
-        f'echo "{b64}" | base64 -di - > {destination_file}', step
-    )
+    destination_file = inputs.get("destination_file")
+    assert destination_file is not None
+
+    info(step, f"Writing file to: {destination_file}...")
+    try:
+        write_file(step, destination_file, contents.encode())
+        result = ProcessResult()
+    except IOError as e:
+        error(step, f"Failed to write file: {str(e)}")
+        return ProcessResult(returncode=1)
 
     if "chmod" in inputs:
         permissions = inputs["chmod"]
-        result = step.job.run_command(f"chmod {permissions} {destination_file}", step)
+        info(step, f"Setting permissions to {permissions} on {destination_file}...")
+        result = step.job.exec(f"chmod {permissions} {destination_file}", step)
+        if result.failed:
+            error(step, f"Failed to set permissions: {result.stderr}")
 
     return result
 
@@ -68,24 +89,35 @@ def upload_file(step: StepContext) -> ProcessResult:
 def download_file(step: StepContext) -> ProcessResult:
     inputs = step.inputs
 
-    source_file = step.expand_expr(inputs["source_file"])
-    b64 = step.job.run_internal_command(
-        f"cat {source_file} | base64", step
-    ).stdout.strip()
-    raw_contents = base64.b64decode(b64)
+    source_file = inputs["source_file"]
+    info(step, f"Reading file: {source_file}...")
+    try:
+        raw_contents = read_file(step, source_file)
+    except IOError as e:
+        error(step, f"Failed to read file: {str(e)}")
+        return ProcessResult(returncode=1)
+
+    info(step, f" - Read {len(raw_contents)} bytes.")
+
+    destination_file: str | None = None
 
     try:
-        destination_file = step.expand_expr(inputs.get("destination_file"))
-        with open(destination_file, "wb") as f:
-            f.write(raw_contents)
+        destination_file = inputs.get("destination_file")
+        if destination_file:
+            info(step, f"Writing file to: {destination_file}...")
+            with open(destination_file, "wb") as f:
+                f.write(raw_contents)
     except Exception as e:
-        raise ProcessError(None, f"Failed to write file: {str(e)}")
+        error(step, f"Failed to write file: {str(e)}")
+        return ProcessResult(returncode=1)
 
     try:
-        if "chmod" in inputs:
+        if destination_file and "chmod" in inputs:
             permissions = inputs["chmod"]
+            info(step, f"Setting permissions to {permissions} on {destination_file}...")
             os.chmod(destination_file, permissions)
     except Exception as e:
-        raise ProcessError(None, f"Failed to set permissions: {str(e)}")
+        error(step, f"Failed to set permissions: {str(e)}")
+        return ProcessResult(returncode=1)
 
-    return ProcessResult("")
+    return ProcessResult()

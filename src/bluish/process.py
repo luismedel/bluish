@@ -1,28 +1,21 @@
-import base64
 import logging
 import subprocess
-from typing import Callable, Optional
-
-
-class ProcessError(Exception):
-    """An error that occurred while running a process."""
-
-    def __init__(self, result: Optional["ProcessResult"], message: str | None = None):
-        super().__init__(message)
-        self.result = result
+from typing import Callable
 
 
 class ProcessResult(subprocess.CompletedProcess[str]):
     """The result of a process execution."""
-    
+
     def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0):
-        self.stdout = stdout
-        self.stderr = stderr
-        self.returncode = returncode
+        super().__init__("", returncode, stdout, stderr)
 
     @property
     def failed(self) -> bool:
         return self.returncode != 0
+    
+    @property
+    def error(self) -> str:
+        return self.stderr or self.stdout
 
     @staticmethod
     def from_subprocess_result(
@@ -41,7 +34,7 @@ def _escape_command(command: str) -> str:
 
 def _get_docker_pid(host: str) -> str:
     """Gets the container id from the container name or id."""
-    
+
     docker_pid = run(f"docker ps -f name={host} -qa").stdout.strip()
     if not docker_pid:
         docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
@@ -134,7 +127,7 @@ def run(
     or `docker://<container>` for a running Docker container.
     - `stdout_handler` and `stderr_handler` are optional functions that are called
     with the output of the command as it is produced.
-    
+
     Returns a `ProcessResult` object with the output of the command.
     """
 
@@ -145,7 +138,7 @@ def run(
         command = f"ssh {ssh_host} -- '{command}'"
     elif host and host.startswith("docker://"):
         docker_pid = host[9:]
-        command = f"docker exec -i {docker_pid} sh -c '{command}'"
+        command = f"docker exec -i {docker_pid} sh -euc '{command}'"
 
     result = capture_subprocess_output(command, stdout_handler)
 
@@ -155,15 +148,33 @@ def run(
     return ProcessResult.from_subprocess_result(result)
 
 
-def read_file(host: str | None, file_path: str) -> bytes:
-    """Reads a file from a host and returns its content as bytes."""
+def get_flavor(host: str | None) -> str:
+    ids = {}
+    for line in run(
+        "cat /etc/os-release | grep ^ID", host
+    ).stdout.splitlines():
+        key, value = line.split("=", maxsplit=1)
+        ids[key] = value.strip().strip('"')
+    return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
 
-    b64 = run(f"cat {file_path} | base64", host).stdout.strip()
-    return base64.b64decode(b64)
 
+def install_package(host: str | None, *packages: str) -> ProcessResult:
+    """Installs a package on a host."""
 
-def write_file(host: str, file_path: str, content: bytes) -> ProcessResult:
-    """Writes content to a file on a host."""
+    package_list = " ".join(packages)
 
-    b64 = base64.b64encode(content).decode()
-    return run(f"echo {b64} | base64 -di - > {file_path}", host)
+    flavor = get_flavor(host)
+    if flavor in ("alpine", "alpine-edge"):
+        return run(f"apk update && apk add {package_list}", host)
+    elif flavor in ("debian", "ubuntu"):
+        return run(f"apt-get update && apt-get install -y {package_list}", host)
+    elif flavor in ("fedora", "centos", "rhel", "rocky"):
+        return run(f"dnf install -y {package_list}", host)
+    elif flavor in ("arch"):
+        return run(f"pacman -S --noconfirm {package_list}", host)
+    elif flavor in ("suse", "opensuse", "opensuse-leap", "opensuse-tumbleweed"):
+        return run(f"zypper install -y {package_list}", host)
+    elif flavor in ("gentoo"):
+        return run(f"emerge -v {package_list}", host)
+    else:
+        raise ValueError(f"Unsupported flavor: {flavor}")

@@ -22,8 +22,8 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    wf.dispatch()
-    assert wf.jobs["checkout"].output == "# Bluish"
+    _, result = wf.try_dispatch()
+    assert wf.jobs["checkout"].result.stdout == "# Bluish"
 
 
 def test_docker_checkout_alpine() -> None:
@@ -38,5 +38,5 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    wf.dispatch()
-    assert wf.jobs["checkout"].output == "# Bluish"
+    _, result = wf.try_dispatch()
+    assert wf.jobs["checkout"].result.stdout == "# Bluish"

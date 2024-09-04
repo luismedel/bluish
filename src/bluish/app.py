@@ -1,4 +1,6 @@
+import logging
 import os
+from typing import Never
 
 import click
 import yaml
@@ -6,17 +8,25 @@ import yaml
 from bluish.__main__ import PROJECT_VERSION
 from bluish.core import (
     JobContext,
-    ProcessError,
     WorkflowContext,
-    fatal,
     init_commands,
-    init_logging,
 )
+from bluish.process import ProcessResult
+
+
+def fatal(message: str, exit_code: int = 1) -> Never:
+    logging.critical(message)
+    exit(exit_code)
+
+
+def init_logging(level_name: str) -> None:
+    log_level = getattr(logging, level_name.upper(), logging.INFO)
+    logging.basicConfig(level=log_level, format="[%(levelname).1s] %(message)s")
 
 
 def locate_yaml(name: str) -> str | None:
     """Locates the workflow file."""
-    
+
     if not name:
         name = "bluish"
     if os.path.exists(f"{name}.yaml"):
@@ -28,7 +38,7 @@ def locate_yaml(name: str) -> str | None:
 
 def workflow_from_file(file: str) -> WorkflowContext:
     """Loads the workflow from a file."""
-    
+
     yaml_contents: str = ""
     try:
         with open(file, "r") as yaml_file:
@@ -65,32 +75,33 @@ def dispatch_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
             deps[job.id].append(dep_job)
             gen_dependencies(dep_job)
 
-    def dispatch_job(job: JobContext):
+    def _dispatch(job: JobContext) -> ProcessResult | None:
         assert job.id is not None
 
         if job.id in executed_jobs:
-            return
+            return job.result
         executed_jobs.add(job.id)
 
         dependencies = deps.get(job.id)
         if dependencies:
             for dependency in dependencies:
-                dispatch_job(dependency)
+                _dispatch(dependency)
 
-        job.dispatch()
+        run, result = job.try_dispatch()
+        if not run:
+            return None
+        assert result is not None
+
+        if result.failed:
+            if result.stderr:
+                print(result.stderr)
+            fatal(f"Job {job_id} failed with exit code {result.returncode}")
+        return result
 
     if not no_deps:
         gen_dependencies(job)
 
-    try:
-        dispatch_job(job)
-    except ProcessError as e:
-        if e.result:
-            fatal(str(e), e.result.returncode)
-        else:
-            fatal(str(e))
-    except Exception:
-        raise
+    _ = _dispatch(job)
 
 
 @click.command("blu")
@@ -194,5 +205,9 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     dispatch_job(wf, job_id, no_deps)
 
 
+def test_adhoc():
+    blu_cli("ci:fix", False, "INFO")
+
+
 if __name__ == "__main__":
-    pass
+    test_adhoc()

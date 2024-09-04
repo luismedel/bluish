@@ -1,26 +1,19 @@
 import base64
-import logging
 import os
-import random
 import re
+from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, Never, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Dict, Optional, TypeVar, Union, cast
+from uuid import uuid4
 
 from dotenv import dotenv_values
 
-from bluish.process import (
-    ProcessError,
-    ProcessResult,
-    cleanup_host,
-    prepare_host,
-    read_file,
-    run,
-)
-from bluish.utils import decorate_for_log
+import bluish.process as process
+from bluish.logging import debug, error, info, warning
 
 DEFAULT_ACTION = "core/default-action"
 
-REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], "ProcessResult"]] = {}
+REGISTERED_ACTIONS: Dict[str, Callable[["StepContext"], process.ProcessResult]] = {}
 
 
 SHELLS = {
@@ -36,9 +29,11 @@ VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
 CAPTURE_REGEX = re.compile(r"^\s*capture\:(.+)$")
 
 
-def fatal(message: str, exit_code: int = 1) -> Never:
-    logging.critical(message)
-    exit(exit_code)
+class ExecutionStatus(Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    FINISHED = "FINISHED"
+    SKIPPED = "SKIPPED"
 
 
 def set_obj_attr(obj: Any, name: str, value: Any) -> None:
@@ -96,8 +91,9 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
             return (True, value if raw else ctx.expand_expr(value))
 
     if "." not in name:
-        if name == "output":
-            return prepare_value(getattr(ctx, "output", None))
+        if name == "result":
+            output = ctx.result
+            return prepare_value("" if output is None else output.stdout.strip())
     else:
         root, varname = name.split(".", maxsplit=1)
 
@@ -178,8 +174,8 @@ def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
         return True
 
     if "." not in name:
-        if name == "output":
-            setattr(ctx, "output", value)
+        if name == "result":
+            ctx.result.stdout = value
             return True
     else:
         root, varname = name.split(".", maxsplit=1)
@@ -235,6 +231,46 @@ def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     return False
 
 
+def can_dispatch(context: Union["StepContext", "JobContext"]) -> bool:
+    if context.attrs._if is None:
+        return True
+
+    info(context, f"Testing {context.attrs._if}")
+    if not isinstance(context.attrs._if, str):
+        raise ValueError("Condition must be a string")
+
+    check_cmd = context.attrs._if.strip()
+    job = get_job(context)
+    assert job is not None
+    return job.exec(check_cmd, context, shell=DEFAULT_SHELL).returncode == 0
+
+
+def read_file(ctx: "ContextNode", file_path: str) -> bytes:
+    """Reads a file from a host and returns its content as bytes."""
+
+    job = get_job(ctx)
+    assert job is not None
+
+    result = job.exec(f"base64 -i '{file_path}'", ctx)
+    if result.failed:
+        raise IOError(f"Failure reading from {file_path}: {result.error}")
+
+    return base64.b64decode(result.stdout)
+
+
+def write_file(ctx: "ContextNode", file_path: str, content: bytes) -> None:
+    """Writes content to a file on a host."""
+
+    job = get_job(ctx)
+    assert job is not None
+
+    b64 = base64.b64encode(content).decode()
+
+    result = job.exec(f"echo {b64} | base64 -di - > {file_path}", ctx)
+    if result.failed:
+        raise IOError(f"Failure writing to {file_path}: {result.error}")
+
+
 class VariableExpandError(Exception):
     pass
 
@@ -276,19 +312,22 @@ class ContextNode:
         self.attrs.ensure_property("env", {})
         self.attrs.ensure_property("var", {})
 
+        self.id: str | None = self.attrs.id
         self.env = dict(self.attrs.env)
         self.var = dict(self.attrs.var)
+        self.outputs = dict(self.attrs.outputs or {})
+        self.result = process.ProcessResult()
+        self.failed = False
+        self.status: ExecutionStatus = ExecutionStatus.PENDING
 
-        self.id: str | None = self.attrs.id
-
-    def expand_expr(self, value: Any, _depth: int = 1) -> str:
+    def expand_expr(self, value: Any, _depth: int = 1) -> Any:
         MAX_EXPAND_RECURSION = 5
 
         if value is None:
             return ""
 
         if not isinstance(value, str):
-            return str(value)
+            return value
 
         if "$" not in value:
             return value
@@ -301,7 +340,7 @@ class ContextNode:
                 return match.group(0)[1:]
             try:
                 v = self.get_value(match.group(1), raw=True)
-                return self.expand_expr(v, _depth=_depth + 1)
+                return str(self.expand_expr(v, _depth=_depth + 1))
             except VariableExpandError:
                 if _depth > 1:
                     raise
@@ -329,10 +368,12 @@ class ContextNode:
         if not try_set_value(self, name, value):
             raise ValueError(f"Invalid variable name: {name}")
 
-    def dispatch(self) -> ProcessResult | None:
-        pass
+    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+        raise NotImplementedError()
 
-    def get_inherited_attr(self, name: str, default: TResult = None) -> TResult:
+    def get_inherited_attr(
+        self, name: str, default: TResult | None = None
+    ) -> TResult | None:
         obj: ContextNode | None = self
         while obj is not None:
             if not hasattr(obj.attrs, name):
@@ -344,8 +385,6 @@ class ContextNode:
 class WorkflowContext(ContextNode):
     def __init__(self, definition: dict[str, Any]) -> None:
         super().__init__(None, definition)
-
-        self.output: str = ""
 
         self.attrs.ensure_property("var", {})
         self.attrs.ensure_property("jobs", {})
@@ -362,17 +401,26 @@ class WorkflowContext(ContextNode):
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
         self.var = dict(self.attrs.var)
 
-    def dispatch(self) -> ProcessResult | None:
-        result: ProcessResult | None = None
-        for job in self.jobs.values():
-            result = job.dispatch()
-        return result
+    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+        self.status = ExecutionStatus.RUNNING
 
-    def dispatch_job(self, id: str) -> ProcessResult | None:
-        job = next((v for k, v in self.jobs.items() if k == id), None)
-        if not job:
-            raise ValueError(f"Job {id} not found")
-        return job.dispatch()
+        try:
+            for job in self.jobs.values():
+                run, result = job.try_dispatch()
+                if not run:
+                    continue
+
+                assert result is not None
+                
+                self.result = result
+
+                if result.failed and not job.attrs.continue_on_error:
+                    self.failed = True
+                    break
+        finally:
+            self.status = ExecutionStatus.FINISHED
+
+        return (True, self.result)
 
 
 class JobContext(ContextNode):
@@ -381,15 +429,11 @@ class JobContext(ContextNode):
 
         self.workflow = parent
         self.id = id
-        self.output: str = ""
 
         self.runs_on_host: str | None = None
 
         self.attrs.ensure_property("steps", [])
-        self.attrs.ensure_property("echo_commands", True)
-        self.attrs.ensure_property("echo_output", True)
-        self.attrs.ensure_property("is_sensitive", False)
-        self.attrs.ensure_property("can_fail", False)
+        self.attrs.ensure_property("continue_on_error", False)
 
         self.env = {
             **parent.env,
@@ -401,96 +445,67 @@ class JobContext(ContextNode):
             **self.attrs.var,
         }
 
-        self.outputs = dict(self.attrs.outputs or {})
-
         self.steps: dict[str, StepContext] = {}
         for i, step in enumerate(self.attrs.steps):
             if "id" not in step:
-                step["id"] = f"steps_{i}"
+                step["id"] = f"step_{i+1}"
             key = step["id"]
             self.steps[key] = StepContext(self, step)
 
-    def can_dispatch(self, context: Union["StepContext", "JobContext"]) -> bool:
-        if context.attrs._if is None:
-            return True
+    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+        self.status = ExecutionStatus.RUNNING
 
-        logging.info(f"Testing {context.attrs._if}")
-        if not isinstance(context.attrs._if, str):
-            raise ValueError("Condition must be a string")
-
-        check_cmd = context.attrs._if.strip()
         try:
-            _ = self.run_command(check_cmd, context, shell=DEFAULT_SHELL)
-            return True
-        except ProcessError:
-            return False
+            self.runs_on_host = process.prepare_host(
+                self.expand_expr(self.attrs.runs_on)
+            )
 
-    def dispatch(self) -> ProcessResult | None:
-        try:
-            self.runs_on_host = prepare_host(self.expand_expr(self.attrs.runs_on))
+            if not can_dispatch(self):
+                self.status = ExecutionStatus.SKIPPED
+                info(self, "Job skipped")
+                return (False, None)
 
-            if not self.can_dispatch(self):
-                logging.info("Job skipped")
-                return None
-
-            result: ProcessResult | None = None
             for step in self.steps.values():
-                result = step.dispatch()
+                run, result = step.try_dispatch()
+                if not run:
+                    continue
 
-            if result:
-                self.set_value(f"jobs.{self.id}.output", result.stdout.strip())
+                assert result is not None
+                
+                self.result = result
 
-            return result
-        except ProcessError as e:
-            if e.result:
-                logging.error(
-                    str(e),
-                    extra={
-                        "returncode": e.result.returncode,
-                        "stdout": e.result.stdout,
-                        "stderr": e.result.stderr,
-                    },
-                )
-            else:
-                logging.error(str(e))
-            raise
+                if result.failed and not step.attrs.continue_on_error:
+                    self.failed = True
+                    break
+
         finally:
-            cleanup_host(self.runs_on_host)
+            if self.status == ExecutionStatus.RUNNING:
+                self.status = ExecutionStatus.FINISHED
+            process.cleanup_host(self.runs_on_host)
 
-    def run_command(
+        return (True, self.result)
+
+    def exec(
         self,
         command: str,
-        context: Union["StepContext", "JobContext"],
+        context: ContextNode,
         shell: str | None = None,
-        can_fail: bool | None = None,
-        echo_command: bool | None = None,
-        echo_output: bool | None = None,
-    ) -> ProcessResult:
+        stream_output: bool = False,
+    ) -> process.ProcessResult:
+        command = context.expand_expr(command).strip()
+        if "${{" in command:
+            raise ValueError("Command contains unexpanded variables")
+
         host = self.runs_on_host
 
-        if echo_command is None:
-            echo_command = self.get_inherited_attr("echo_commands", True)
-
-        if echo_output is None:
-            echo_output = context.get_inherited_attr("echo_output", True)
-
         if context.get_inherited_attr("is_sensitive", False):
-            echo_command = False
-            echo_output = False
-
-        if echo_command:
-            if host:
-                logging.info(f"In @{host}:")
-            logging.info(decorate_for_log(command))
-
-        command = context.expand_expr(command).strip()
+            stream_output = False
 
         # Define where to capture the output with the >> operator
-        capture_filename = (
-            f"/tmp/bluish-capture-{self.id}-{hex(random.randint(0, 65535))}.txt"
-        )
-        logging.debug(f"Capture file: {capture_filename}")
-
+        capture_filename = f"/tmp/{uuid4().hex}"
+        debug(self, f"Capture file: {capture_filename}")
+        if process.run(f"touch {capture_filename}", host).failed:
+            error(context, f"Failed to create capture file: {capture_filename}")
         # Build the env map
         env = {}
 
@@ -503,8 +518,9 @@ class JobContext(ContextNode):
             ctx = ctx.parent
 
         if "BLUISH_OUTPUT" in env:
-            logging.warning(
-                "BLUISH_OUTPUT is a reserved environment variable. Overwriting it."
+            warning(
+                self,
+                "BLUISH_OUTPUT is a reserved environment variable. Overwriting it.",
             )
 
         env["BLUISH_OUTPUT"] = capture_filename
@@ -512,11 +528,6 @@ class JobContext(ContextNode):
         env_str = "; ".join([f'{k}="{v}"' for k, v in env.items()]).strip()
         if env_str:
             command = f"{env_str}; {command}"
-
-        if can_fail is None:
-            can_fail = (
-                context.attrs.can_fail if context.attrs.can_fail is not None else False
-            )
 
         if shell is None:
             shell = (
@@ -533,45 +544,41 @@ class JobContext(ContextNode):
 
         working_dir = context.get_value("env.WORKING_DIR", "")
         if working_dir:
-            logging.debug(f"Working dir: {working_dir}")
+            debug(self, f"Working dir: {working_dir}")
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
             line = line.strip()
             if line:
-                logging.info(line)
+                info(self, line)
 
         def stderr_handler(line: str) -> None:
             line = line.strip()
             if line:
-                logging.info(line)
+                info(self, line)
 
-        result = run(
+        result = process.run(
             command,
             host=host,
-            stdout_handler=stdout_handler if echo_output else None,
-            stderr_handler=stderr_handler if echo_output else None,
+            stdout_handler=stdout_handler if stream_output else None,
+            stderr_handler=stderr_handler if stream_output else None,
         )
+
+        # HACK: We should use process.read_file here,
+        # but it currently causes an infinite recursion
+        output_result = process.run(f"cat {capture_filename}", host)
+        if output_result.failed:
+            error(self, f"Failed to read capture file: {output_result.error}")
+        else:
+            for line in output_result.stdout.splitlines():
+                k, v = line.split("=", maxsplit=1)
+                context.set_value(f"outputs.{k}", v)
 
         if result.failed:
             msg = f"Command failed with exit status {result.returncode}."
-            if not can_fail:
-                raise ProcessError(result, msg)
-            if echo_output:
-                logging.warning(msg)
-
-        for line in read_file(host, capture_filename).decode().splitlines():
-            k, v = line.split("=", maxsplit=1)
-            context.set_value(f"outputs.{k}", v)
+            warning(self, msg)
 
         return result
-
-    def run_internal_command(
-        self, command: str, context: Union["StepContext", "JobContext"]
-    ):
-        return self.run_command(
-            command, context, echo_command=False, echo_output=False, can_fail=True
-        )
 
 
 class StepContext(ContextNode):
@@ -580,14 +587,10 @@ class StepContext(ContextNode):
 
         self.workflow = parent.workflow
         self.job = parent
-        self.output: str = ""
 
         self.attrs.ensure_property("name", "")
         self.attrs.ensure_property("uses", DEFAULT_ACTION)
-        self.attrs.ensure_property("echo_commands", True)
-        self.attrs.ensure_property("echo_output", True)
-        self.attrs.ensure_property("is_sensitive", False)
-        self.attrs.ensure_property("can_fail", False)
+        self.attrs.ensure_property("continue_on_error", False)
         self.attrs.ensure_property("shell", DEFAULT_SHELL)
 
         self.id = self.attrs.id
@@ -595,21 +598,38 @@ class StepContext(ContextNode):
         self.inputs = dict(self.attrs._with or {})
         self.outputs = dict(self.attrs.outputs or {})
 
-    def dispatch(self) -> ProcessResult | None:
-        if not self.job.can_dispatch(self):
-            logging.info("Step skipped")
-            return None
+    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+        if not can_dispatch(self):
+            self.status = ExecutionStatus.SKIPPED
+            info(self, "Step skipped")
+            return (False, None)
 
-        if self.attrs.name:
-            logging.info(f"Processing step: {self.attrs.name}")
+        self.status = ExecutionStatus.RUNNING
 
-        fqn = self.attrs.uses or DEFAULT_ACTION
-        fn = REGISTERED_ACTIONS.get(fqn)
-        if not fn:
-            raise ValueError(f"Unknown action: {fqn}")
+        try:
+            if self.attrs.name:
+                info(self, self.expand_expr(self.attrs.name))
 
-        logging.info(f"Running {fqn}")
-        return fn(self)
+            fqn = self.attrs.uses or DEFAULT_ACTION
+            fn = REGISTERED_ACTIONS.get(fqn)
+            if not fn:
+                raise ValueError(f"Unknown action: {fqn}")
+
+            info(self, f"Run {fqn}")
+            if self.inputs:
+                info(self, "with:")
+                for k, v in self.inputs.items():
+                    v = self.expand_expr(v)
+                    self.inputs[k] = v
+                    info(self, f"  {k}: {v}")
+
+            self.result = fn(self)
+            self.failed = self.result.failed
+
+        finally:
+            self.status = ExecutionStatus.FINISHED
+
+        return (True, self.result)
 
 
 class RequiredInputError(Exception):
@@ -628,14 +648,15 @@ def action(
     required_inputs: list[str] | None = None,
 ) -> Any:
     """Defines a new action.
-    
+
     Controls which attributes and inputs are required for the action to run.
     """
+
     def inner(
-        func: Callable[[StepContext], ProcessResult]
-    ) -> Callable[[StepContext], ProcessResult]:
+        func: Callable[[StepContext], process.ProcessResult]
+    ) -> Callable[[StepContext], process.ProcessResult]:
         @wraps(func)
-        def wrapper(step: StepContext) -> ProcessResult:
+        def wrapper(step: StepContext) -> process.ProcessResult:
             def exists(key: str, values: dict) -> bool:
                 """Checks if a key (or pipe-separated alternative keys) exists in a dictionary."""
                 return (
@@ -655,27 +676,21 @@ def action(
                     if not exists(param, step.inputs):
                         raise RequiredInputError(param)
 
-            result = func(step)
-            step.output = result.stdout.strip()
+            step.result = func(step)
 
             if step.attrs.set:
                 variables = step.attrs.set
                 for key, value in variables.items():
                     value = step.expand_expr(value)
-                    logging.debug(f"Setting {key} = {value}")
+                    debug(step, f"Setting {key} = {value}")
                     step.set_value(key, value)
 
-            return result
+            return step.result
 
         REGISTERED_ACTIONS[fqn] = wrapper
         return wrapper
 
     return inner
-
-
-def init_logging(level_name: str) -> None:
-    log_level = getattr(logging, level_name.upper(), logging.INFO)
-    logging.basicConfig(level=log_level, format="[%(levelname).1s] %(message)s")
 
 
 def init_commands() -> None:

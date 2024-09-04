@@ -1,7 +1,8 @@
 import os
 
 from bluish.core import StepContext, action
-from bluish.process import ProcessError, ProcessResult
+from bluish.logging import error, info
+from bluish.process import ProcessResult, install_package
 
 
 def run_git_command(command: str, step: StepContext) -> ProcessResult:
@@ -11,21 +12,18 @@ def run_git_command(command: str, step: StepContext) -> ProcessResult:
     if key_file:
         preamble = f"export GIT_SSH_COMMAND='ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeychecking=no';"
 
-    return step.job.run_command(f"{preamble} {command}", step)
+    return step.job.exec(f"{preamble} {command}", step)
 
 
-def prepare_environment(step: StepContext) -> None:
-    if step.job.run_internal_command("which git", step).returncode != 0:
-        is_alpine = step.job.run_internal_command("which apk", step).returncode == 0
+def prepare_environment(step: StepContext) -> ProcessResult:
+    if step.job.exec("which git", step).failed:
+        info(step, "Installing git...")
+        result = install_package(step.job.runs_on_host, "git")
+        if result.failed:
+            error(step, f"Failed to install git. Error: {result.error}")
+            return result
 
-        command = (
-            "apk update && apk add git"
-            if is_alpine
-            else "apt update && apt install git -y"
-        )
-        result = step.job.run_internal_command(command, step)
-        if result.returncode != 0:
-            raise ProcessError(None, f"Failed to install git. Error: {result.stdout}")
+    return ProcessResult()
 
 
 def cleanup_environment(step: StepContext) -> None:
@@ -35,7 +33,9 @@ def cleanup_environment(step: StepContext) -> None:
 @action("git/checkout", required_inputs=["repository"])
 def git_checkout(step: StepContext) -> ProcessResult:
     try:
-        prepare_environment(step)
+        result = prepare_environment(step)
+        if result.failed:
+            return result
 
         inputs = step.inputs
 
@@ -50,11 +50,14 @@ def git_checkout(step: StepContext) -> ProcessResult:
 
         repository: str = inputs["repository"]
         repo_name = os.path.basename(repository)
+
+        info(step, f"Cloning repository: {repository}...")
         result = run_git_command(
             f"git clone {repository} {options} ./{repo_name}", step
         )
 
         # Update the current job working dir to the newly cloned repo
+        info(step, f"Setting working directory to: {repo_name}...")
         wd = step.job.get_value("env.WORKING_DIR", "")
         step.job.set_value("env.WORKING_DIR", f"{wd}/{repo_name}")
 
