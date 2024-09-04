@@ -331,7 +331,7 @@ jobs:
               set:
                   workflow.var.VALUE: 2
                   job.var.COOL_YEAR: 1980
-                  jobs.test_job.var.VOUTPUT: ${{ result }}
+                  jobs.test_job.var.VOUTPUT: ${{ .result }}
 """)
     _, result = wf.try_dispatch()
 

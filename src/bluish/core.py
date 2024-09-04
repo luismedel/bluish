@@ -25,7 +25,7 @@ SHELLS = {
 
 DEFAULT_SHELL = "sh"
 
-VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_][a-zA-Z0-9_.-]*)\s*\}\}")
+VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
 CAPTURE_REGEX = re.compile(r"^\s*capture\:(.+)$")
 
 
@@ -91,74 +91,76 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
             return (True, value if raw else ctx.expand_expr(value))
 
     if "." not in name:
-        if name == "result":
-            output = ctx.result
-            return prepare_value("" if output is None else output.stdout.strip())
-    else:
-        root, varname = name.split(".", maxsplit=1)
+        name = f".{name}"
 
-        if root in ("env", "var"):
-            varname = name[4:]
-            current: ContextNode | None = ctx
-            while current:
-                if root == "env":
-                    found, value = get_from_dict(current, "sys_env", varname)
-                    if not found:
-                        found, value = get_from_dict(current, "env", varname)
-                    if found:
-                        return prepare_value(value)
-                elif root == "var":
-                    found, value = get_from_dict(current, "var", varname)
-                    if found:
-                        return prepare_value(value)
-                current = current.parent
-        elif root == "workflow":
-            wf = get_workflow(ctx)
-            if not wf:
-                raise ValueError("Workflow reference not found")
-            return try_get_value(wf, varname, raw)
-        elif root == "jobs":
-            wf = get_workflow(ctx)
-            if not wf:
-                raise ValueError("Workflow reference not found")
-            job_id, varname = varname.split(".", maxsplit=1)
-            job = wf.jobs.get(job_id)
-            if not job:
-                raise ValueError(f"Job {job_id} not found")
-            return try_get_value(job, varname, raw)
-        elif root == "job":
-            job = get_job(ctx)
-            if not job:
-                raise ValueError("Job reference not found")
-            return try_get_value(job, varname, raw)
-        elif root == "steps":
-            job = get_job(ctx)
-            if not job:
-                raise ValueError("Job reference not found")
-            step_id, varname = varname.split(".", maxsplit=1)
-            step = job.steps.get(step_id)
-            if not step:
-                raise ValueError(f"Step {step_id} not found")
-            return try_get_value(step, varname, raw)
-        elif root == "step":
-            step = get_step(ctx)
-            if not step:
-                raise ValueError("Step reference not found")
-            return try_get_value(step, varname, raw)
-        elif root == "inputs":
-            step = get_step(ctx)
-            if not step:
-                raise ValueError("Step reference not found")
-            found, value = get_from_dict(step, "inputs", varname)
-            if found:
-                return prepare_value(value)
-        elif root == "outputs":
-            node = get_step(ctx) or get_job(ctx)
-            if not node:
-                return (False, "")
-            found, value = get_from_dict(node, "outputs", varname)
-            if found:
-                return prepare_value(value)
+    root, varname = name.split(".", maxsplit=1)
+
+    if root == "":
+        if varname == "result":
+            return prepare_value("" if ctx.result is None else ctx.result.stdout.strip())
+        return (False, "")
+    elif root in ("env", "var"):
+        varname = name[4:]
+        current: ContextNode | None = ctx
+        while current:
+            if root == "env":
+                found, value = get_from_dict(current, "sys_env", varname)
+                if not found:
+                    found, value = get_from_dict(current, "env", varname)
+                if found:
+                    return prepare_value(value)
+            elif root == "var":
+                found, value = get_from_dict(current, "var", varname)
+                if found:
+                    return prepare_value(value)
+            current = current.parent
+    elif root == "workflow":
+        wf = get_workflow(ctx)
+        if not wf:
+            raise ValueError("Workflow reference not found")
+        return try_get_value(wf, varname, raw)
+    elif root == "jobs":
+        wf = get_workflow(ctx)
+        if not wf:
+            raise ValueError("Workflow reference not found")
+        job_id, varname = varname.split(".", maxsplit=1)
+        job = wf.jobs.get(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        return try_get_value(job, varname, raw)
+    elif root == "job":
+        job = get_job(ctx)
+        if not job:
+            raise ValueError("Job reference not found")
+        return try_get_value(job, varname, raw)
+    elif root == "steps":
+        job = get_job(ctx)
+        if not job:
+            raise ValueError("Job reference not found")
+        step_id, varname = varname.split(".", maxsplit=1)
+        step = job.steps.get(step_id)
+        if not step:
+            raise ValueError(f"Step {step_id} not found")
+        return try_get_value(step, varname, raw)
+    elif root == "step":
+        step = get_step(ctx)
+        if not step:
+            raise ValueError("Step reference not found")
+        return try_get_value(step, varname, raw)
+    elif root == "inputs":
+        step = get_step(ctx)
+        if not step:
+            raise ValueError("Step reference not found")
+        found, value = get_from_dict(step, "inputs", varname)
+        if found:
+            return prepare_value(value)
+    elif root == "outputs":
+        node = get_step(ctx) or get_job(ctx)
+        if not node:
+            return (False, "")
+        found, value = get_from_dict(node, "outputs", varname)
+        if found:
+            return prepare_value(value)
 
     return (False, "")
 
@@ -174,59 +176,59 @@ def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
         return True
 
     if "." not in name:
-        if name == "result":
-            ctx.result.stdout = value
-            return True
-    else:
-        root, varname = name.split(".", maxsplit=1)
+        return False
 
-        if root == "env":
-            return set_in_dict(ctx, "env", name[4:], value)
-        elif root == "var":
-            return set_in_dict(ctx, "var", name[4:], value)
-        elif root == "workflow":
-            wf = get_workflow(ctx)
-            if not wf:
-                return False
-            return try_set_value(wf, varname, value)
-        elif root == "jobs":
-            wf = get_workflow(ctx)
-            if not wf:
-                return False
-            job_id, varname = varname.split(".", maxsplit=1)
-            job = wf.jobs.get(job_id)
-            if not job:
-                raise ValueError(f"Job {job_id} not found")
-            return try_set_value(job, varname, value)
-        elif root == "job":
-            job = get_job(ctx)
-            if not job:
-                return False
-            return try_set_value(job, varname, value)
-        elif root == "steps":
-            job = get_job(ctx)
-            if not job:
-                return False
-            step_id, varname = varname.split(".", maxsplit=1)
-            step = job.steps.get(step_id)
-            if not step:
-                raise ValueError(f"Step {step_id} not found")
-            return try_set_value(step, varname, value)
-        elif root == "step":
-            step = get_step(ctx)
-            if not step:
-                return False
-            return try_set_value(step, varname, value)
-        elif root == "inputs":
-            step = get_step(ctx)
-            if not step:
-                return False
-            return set_in_dict(step, "inputs", varname, value)
-        elif root == "outputs":
-            node = get_step(ctx) or get_job(ctx)
-            if not node:
-                return False
-            return set_in_dict(node, "outputs", varname, value)
+    root, varname = name.split(".", maxsplit=1)
+    if root == "":
+        root, varname = varname.split(".", maxsplit=1)
+
+    if root == "env":
+        return set_in_dict(ctx, "env", name[4:], value)
+    elif root == "var":
+        return set_in_dict(ctx, "var", name[4:], value)
+    elif root == "workflow":
+        wf = get_workflow(ctx)
+        if not wf:
+            return False
+        return try_set_value(wf, varname, value)
+    elif root == "jobs":
+        wf = get_workflow(ctx)
+        if not wf:
+            return False
+        job_id, varname = varname.split(".", maxsplit=1)
+        job = wf.jobs.get(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        return try_set_value(job, varname, value)
+    elif root == "job":
+        job = get_job(ctx)
+        if not job:
+            return False
+        return try_set_value(job, varname, value)
+    elif root == "steps":
+        job = get_job(ctx)
+        if not job:
+            return False
+        step_id, varname = varname.split(".", maxsplit=1)
+        step = job.steps.get(step_id)
+        if not step:
+            raise ValueError(f"Step {step_id} not found")
+        return try_set_value(step, varname, value)
+    elif root == "step":
+        step = get_step(ctx)
+        if not step:
+            return False
+        return try_set_value(step, varname, value)
+    elif root == "inputs":
+        step = get_step(ctx)
+        if not step:
+            return False
+        return set_in_dict(step, "inputs", varname, value)
+    elif root == "outputs":
+        node = get_step(ctx) or get_job(ctx)
+        if not node:
+            return False
+        return set_in_dict(node, "outputs", varname, value)
 
     return False
 
