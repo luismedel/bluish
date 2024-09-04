@@ -14,14 +14,32 @@ from bluish.core import (
 from bluish.process import ProcessResult
 
 
+class LogFormatter(logging.Formatter):
+    COLORS = {
+        logging.DEBUG: "white",
+        logging.INFO: "bright_white",
+        logging.WARNING: "yellow",
+        logging.ERROR: "red",
+        logging.CRITICAL: "bright_red"
+    }
+
+    def __init__(self) -> None:
+        super().__init__(fmt="[%(levelname).1s] %(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.msg = click.style(record.msg, fg=self.COLORS.get(record.levelno, "white"))
+        return super().format(record)
+
+
 def fatal(message: str, exit_code: int = 1) -> Never:
-    logging.critical(message)
+    click.secho(message, fg="red", bold=True)
     exit(exit_code)
 
 
 def init_logging(level_name: str) -> None:
     log_level = getattr(logging, level_name.upper(), logging.INFO)
     logging.basicConfig(level=log_level, format="[%(levelname).1s] %(message)s")
+    logging.getLogger().handlers[0].setFormatter(LogFormatter())
 
 
 def locate_yaml(name: str) -> str | None:
@@ -93,8 +111,7 @@ def dispatch_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
         assert result is not None
 
         if result.failed:
-            if result.stderr:
-                print(result.stderr)
+            click.secho(result.error, fg="bright_red", bold=True)
             fatal(f"Job {job_id} failed with exit code {result.returncode}")
         return result
 
@@ -189,12 +206,11 @@ def list_jobs(wf: WorkflowContext) -> None:
 
     len_id = max([len(id) for id in ids])
 
-    print("List of available jobs:")
-    print(f"{'ID':<{len_id}}  NAME")
+    click.secho(f"{'ID':<{len_id}}  NAME", fg="yellow", bold=True)
     for i in range(len(ids)):
-        id = ids[i]
-        name = names[i]
-        print(f"{id:<{len_id}}  {name}")
+        id = click.style(ids[i], fg="cyan")
+        name = click.style(names[i], fg="white")
+        click.echo(f"{id:<{len_id}}  {name}")
 
 
 @bluish_cli.command("run")
@@ -204,6 +220,9 @@ def list_jobs(wf: WorkflowContext) -> None:
 def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     dispatch_job(wf, job_id, no_deps)
 
+def test_adhoc():
+    blu_cli("ci:fix", False, "DEBUG")
+
 
 if __name__ == "__main__":
-    pass
+    test_adhoc()
