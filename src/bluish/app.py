@@ -205,9 +205,5 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     dispatch_job(wf, job_id, no_deps)
 
 
-def test_adhoc():
-    blu_cli("ci:fix", False, "INFO")
-
-
 if __name__ == "__main__":
-    test_adhoc()
+    pass
