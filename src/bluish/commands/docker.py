@@ -25,7 +25,7 @@ def _build_flag(flag: str, value: bool | None) -> str:
 
 
 def _is_valid_docker_id(id: str) -> bool:
-    return len(id) == 64 and all(c in "0123456789abcdef" for c in id)
+    return len(id) in (12, 64) and all(c in "0123456789abcdef" for c in id)
 
 
 class EmptyPIDError(Exception):
@@ -66,14 +66,10 @@ def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.inputs["name"]
 
     ps_result = docker_ps(step, name=name)
-    if ps_result.failed:
-        error(f"Failed to get container id for {name}: {ps_result.error}")
-        return ps_result
-
     pid = ps_result.stdout.strip()
-    if not _is_valid_docker_id(pid):
-        error(f"Failed to get container id for {name}: {pid}")
-        return ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
+    if ps_result.failed or not _is_valid_docker_id(pid):
+        error(f"Failed to get container id for {name}: {ps_result.error}")
+        return ps_result if ps_result.failed else ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
 
     return ProcessResult(stdout=docker_ps(step, name=name).stdout.strip())
 
@@ -87,8 +83,12 @@ def docker_run(step: StepContext) -> ProcessResult:
 
     info(f"Running container with image {image} and name {name}...")
     ps_result = docker_ps(step, name=name)
+    if ps_result.failed:
+        error(f"Failed to check if container with name {name} is already running: {ps_result.error}")
+        return ps_result
+
     container_pid = ps_result.stdout.strip()
-    if container_pid:
+    if _is_valid_docker_id(container_pid):
         msg = f"Container with name {name} is already running with id {container_pid}."
         if inputs.get("fail_if_running", True):
             error(msg)
@@ -141,18 +141,18 @@ def docker_stop(step: StepContext) -> ProcessResult:
         if inputs.get("fail_if_not_found", True):
             error(msg)
             return ps_result
-        stop_container = False
-        warning(msg)
-        # If don't need to remove the container, we can stop here
-        if not remove_container:
-            return ProcessResult()
+        else:
+            warning(msg)
+            stop_container = False
+            # If don't need to remove the container, we can stop here
+            if not remove_container:
+                return ProcessResult()
 
-    pid = ps_result.stdout.strip()
-    if not _is_valid_docker_id(pid):
-        error(f"Failed to verify container id for container with {input_attr}: {pid}")
+    container_pid = ps_result.stdout.strip()
+    if not _is_valid_docker_id(container_pid):
+        error(f"Failed to verify container id for container with {input_attr}: {container_pid}")
         return ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
 
-    container_pid = pid
     if name:
         info(f"Container found with id {container_pid}.")
 
