@@ -662,9 +662,6 @@ class JobContext(ContextNode):
             k, v = line.split("=", maxsplit=1)
             context.set_value(f"outputs.{k}", v)
 
-        if run_result.failed:
-            error(f"Command failed with exit status {run_result.returncode}: {run_result.error}")
-
         return run_result
 
 
