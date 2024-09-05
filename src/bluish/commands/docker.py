@@ -28,10 +28,6 @@ def _is_valid_docker_id(id: str) -> bool:
     return len(id) in (12, 64) and all(c in "0123456789abcdef" for c in id)
 
 
-class EmptyPIDError(Exception):
-    pass
-
-
 def run_and_get_pid(command: str, step: StepContext) -> str:
     result = step.job.exec(command, step)
     return result.stdout.strip() if result.returncode == 0 else ""
@@ -69,7 +65,13 @@ def docker_get_pid(step: StepContext) -> ProcessResult:
     pid = ps_result.stdout.strip()
     if ps_result.failed or not _is_valid_docker_id(pid):
         error(f"Failed to get container id for {name}: {ps_result.error}")
-        return ps_result if ps_result.failed else ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
+        return (
+            ps_result
+            if ps_result.failed
+            else ProcessResult(
+                returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr
+            )
+        )
 
     return ProcessResult(stdout=docker_ps(step, name=name).stdout.strip())
 
@@ -84,7 +86,9 @@ def docker_run(step: StepContext) -> ProcessResult:
     info(f"Running container with image {image} and name {name}...")
     ps_result = docker_ps(step, name=name)
     if ps_result.failed:
-        error(f"Failed to check if container with name {name} is already running: {ps_result.error}")
+        error(
+            f"Failed to check if container with name {name} is already running: {ps_result.error}"
+        )
         return ps_result
 
     container_pid = ps_result.stdout.strip()
@@ -117,7 +121,9 @@ def docker_run(step: StepContext) -> ProcessResult:
     container_pid = run_result.stdout.strip()
     if not _is_valid_docker_id(container_pid):
         error(f"Failed to get container id for {name}: {container_pid}")
-        return ProcessResult(returncode=1, stdout=run_result.stdout, stderr=run_result.stderr)
+        return ProcessResult(
+            returncode=1, stdout=run_result.stdout, stderr=run_result.stderr
+        )
 
     info(f"Container started with id {container_pid}.")
     return ProcessResult(stdout=container_pid)
@@ -150,8 +156,12 @@ def docker_stop(step: StepContext) -> ProcessResult:
 
     container_pid = ps_result.stdout.strip()
     if not _is_valid_docker_id(container_pid):
-        error(f"Failed to verify container id for container with {input_attr}: {container_pid}")
-        return ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
+        error(
+            f"Failed to verify container id for container with {input_attr}: {container_pid}"
+        )
+        return ProcessResult(
+            returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr
+        )
 
     if name:
         info(f"Container found with id {container_pid}.")
@@ -162,13 +172,17 @@ def docker_stop(step: StepContext) -> ProcessResult:
         for opt in ["signal", "time"]:
             options += _build_opt(f"--{opt}", inputs.get(opt))
 
-        stop_result = step.job.exec(f"docker container stop {options} {container_pid}", step)
+        stop_result = step.job.exec(
+            f"docker container stop {options} {container_pid}", step
+        )
         if stop_result.failed:
             error(f"Failed to stop container with {input_attr}: {stop_result.error}")
             return stop_result
 
     if remove_container:
-        rm_result = step.job.exec(f"docker container rm {options} {container_pid}", step)
+        rm_result = step.job.exec(
+            f"docker container rm {options} {container_pid}", step
+        )
         if rm_result.failed:
             error(f"Failed to remove container with {input_attr}: {rm_result.error}")
             return rm_result
@@ -192,8 +206,12 @@ def docker_exec(step: StepContext) -> ProcessResult:
 
     container_pid = pid_result.stdout.strip()
     if not _is_valid_docker_id(container_pid):
-        error(f"Failed to verify container id for container with {input_attr}: {container_pid}")
-        return ProcessResult(returncode=1, stdout=pid_result.stdout, stderr=pid_result.stderr)
+        error(
+            f"Failed to verify container id for container with {input_attr}: {container_pid}"
+        )
+        return ProcessResult(
+            returncode=1, stdout=pid_result.stdout, stderr=pid_result.stderr
+        )
 
     options = ""
     options += _build_list_opt("-e", inputs.get("env"))
@@ -227,7 +245,9 @@ def docker_exec(step: StepContext) -> ProcessResult:
         if result.failed:
             if echo_output:
                 error(decorate_for_log(result.error))
-            return ProcessResult(returncode=result.returncode, stdout=output, stderr=result.stderr)
+            return ProcessResult(
+                returncode=result.returncode, stdout=output, stderr=result.stderr
+            )
 
     return ProcessResult(stdout=output)
 
@@ -241,7 +261,7 @@ def docker_create_network(step: StepContext) -> ProcessResult:
     info(f"Creating network {name}...")
 
     debug(f"Checking if network {name} already exists...")
-    network_ls_result = step.job.exec(f"docker network ls -f name={name} --quiet", step)    
+    network_ls_result = step.job.exec(f"docker network ls -f name={name} --quiet", step)
     if network_ls_result.failed:
         error(f"Failed to list networks: {network_ls_result.error}")
         return network_ls_result
@@ -261,7 +281,9 @@ def docker_create_network(step: StepContext) -> ProcessResult:
         for flag in ["ingress", "internal"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
 
-        network_create_result = step.job.exec(f"docker network create {options} {name}", step)
+        network_create_result = step.job.exec(
+            f"docker network create {options} {name}", step
+        )
         if network_create_result.failed:
             error(f"Failed to create network {name}: {network_create_result.error}")
             return network_create_result
@@ -269,7 +291,11 @@ def docker_create_network(step: StepContext) -> ProcessResult:
         network_id = network_create_result.stdout.strip()
         if not _is_valid_docker_id(network_id):
             error(f"Failed to get network id for {name}: {network_id}")
-            return ProcessResult(returncode=1, stdout=network_create_result.stdout, stderr=network_create_result.stderr)
+            return ProcessResult(
+                returncode=1,
+                stdout=network_create_result.stdout,
+                stderr=network_create_result.stderr,
+            )
         info(f"Network {name} created with id {network_id}.")
 
     return ProcessResult(stdout=network_id)

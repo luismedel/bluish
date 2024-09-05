@@ -474,7 +474,7 @@ class WorkflowContext(ContextNode):
                 for dependency in dependencies:
                     run, result = _dispatch(dependency)
                     if run and result and result.failed:
-                        error(f"Dependency {dependency.id} failed: {result.error}")
+                        error(f"Dependency {dependency.id} failed")
                         return (True, result)
 
             run, result = job.try_dispatch()
@@ -483,7 +483,7 @@ class WorkflowContext(ContextNode):
             assert result is not None
 
             if result.failed:
-                error(f"Job {job.id} failed: {result.error}")
+                error(f"Job {job.id} failed:\n{result.error}")
 
             return (True, result)
 
@@ -491,11 +491,7 @@ class WorkflowContext(ContextNode):
             debug("Generating dependencies...")
             gen_dependencies(job)
 
-        try:
-            return _dispatch(job)
-        except RuntimeError as e:
-            error(str(e))
-            return (True, process.ProcessResult(returncode=1, error=str(e)))
+        return _dispatch(job)
 
 
 class JobContext(ContextNode):

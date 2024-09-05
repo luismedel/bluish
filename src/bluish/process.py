@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import subprocess
 from typing import Callable
@@ -66,14 +67,11 @@ def cleanup_host(host: str | None) -> None:
         host = host[9:]
         logging.info(f"Stopping and removing container {host}...")
 
-        try:
+        with contextlib.suppress(Exception):
             run(f"docker stop {host}")
-        except Exception:
-            pass
-        try:
+
+        with contextlib.suppress(Exception):
             run(f"docker rm {host}")
-        except Exception:
-            pass
 
 
 def capture_subprocess_output(

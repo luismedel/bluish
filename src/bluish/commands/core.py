@@ -120,13 +120,13 @@ def download_file(step: StepContext) -> ProcessResult:
         error(f"Failed to write file: {str(e)}")
         return ProcessResult(returncode=1)
 
-    try:
-        if destination_file and "chmod" in inputs:
-            permissions = inputs["chmod"]
-            info(f"Setting permissions to {permissions} on {destination_file}...")
+    if destination_file and "chmod" in inputs:
+        permissions = inputs["chmod"]
+        info(f"Setting permissions to {permissions} on {destination_file}...")
+        try:
             os.chmod(destination_file, permissions)
-    except Exception as e:
-        error(f"Failed to set permissions: {str(e)}")
-        return ProcessResult(returncode=1)
+        except Exception as e:
+            error(f"Failed to set permissions: {str(e)}")
+            return ProcessResult(returncode=1)
 
     return ProcessResult()

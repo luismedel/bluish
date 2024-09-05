@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import os
 from typing import Never
@@ -66,11 +67,10 @@ def workflow_from_file(file: str) -> WorkflowContext:
     """Loads the workflow from a file."""
 
     yaml_contents: str = ""
-    try:
+
+    with contextlib.suppress(FileNotFoundError):
         with open(file, "r") as yaml_file:
             yaml_contents = yaml_file.read()
-    except FileNotFoundError:
-        pass
 
     if not yaml_contents:
         fatal("No workflow file found.")
@@ -108,11 +108,14 @@ def blu_cli(
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
-    
+
     try:
         run, result = wf.try_dispatch_job(job, no_deps)
+        if run and result and result.failed:
+            exit(result.returncode)
     except Exception as e:
         fatal(str(e))
+
 
 @click.group("bluish")
 @click.option(
@@ -139,11 +142,9 @@ def bluish_cli(
     if not yaml_path:
         fatal("No workflow file found.")
 
-    try:
+    with contextlib.suppress(FileNotFoundError):
         with open(yaml_path, "r") as yaml_file:
             yaml_contents = yaml_file.read()
-    except FileNotFoundError:
-        pass
 
     if not yaml_contents:
         fatal("No workflow file found.")
@@ -184,11 +185,14 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
-    
+
     try:
         run, result = wf.try_dispatch_job(job, no_deps)
+        if run and result and result.failed:
+            exit(result.returncode)
     except Exception as e:
         fatal(str(e))
+
 
 def test_adhoc():
     blu_cli("ci:fix", False, "DEBUG")
