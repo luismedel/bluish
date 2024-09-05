@@ -781,6 +781,7 @@ def action(
 
 def init_commands() -> None:
     import bluish.commands.core  # noqa
+    import bluish.commands.system  # noqa
     import bluish.commands.docker  # noqa
     import bluish.commands.git  # noqa
 

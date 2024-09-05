@@ -18,7 +18,7 @@ def run_git_command(command: str, step: StepContext) -> ProcessResult:
 def prepare_environment(step: StepContext) -> ProcessResult:
     if step.job.exec("which git", step).failed:
         info("Installing git...")
-        result = install_package(step.job.runs_on_host, "git")
+        result = install_package(step.job.runs_on_host, ["git"])
         if result.failed:
             error(f"Failed to install git. Error: {result.error}")
             return result

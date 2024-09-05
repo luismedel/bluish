@@ -154,12 +154,12 @@ def get_flavor(host: str | None) -> str:
     return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
 
 
-def install_package(host: str | None, *packages: str) -> ProcessResult:
+def install_package(host: str | None, packages: list[str], flavor: str = "auto") -> ProcessResult:
     """Installs a package on a host."""
 
     package_list = " ".join(packages)
 
-    flavor = get_flavor(host)
+    flavor = get_flavor(host) if flavor == "auto" else flavor
     if flavor in ("alpine", "alpine-edge"):
         return run(f"apk update && apk add {package_list}", host)
     elif flavor in ("debian", "ubuntu"):
