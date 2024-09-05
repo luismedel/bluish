@@ -644,7 +644,7 @@ class JobContext(ContextNode):
             if line:
                 info(line)
 
-        result = process.run(
+        run_result = process.run(
             command,
             host=host,
             stdout_handler=stdout_handler if stream_output else None,
@@ -662,11 +662,10 @@ class JobContext(ContextNode):
             k, v = line.split("=", maxsplit=1)
             context.set_value(f"outputs.{k}", v)
 
-        if result.failed:
-            msg = f"Command failed with exit status {result.returncode}."
-            warning(msg)
+        if run_result.failed:
+            error(f"Command failed with exit status {run_result.returncode}: {run_result.error}")
 
-        return result
+        return run_result
 
 
 class StepContext(ContextNode):
