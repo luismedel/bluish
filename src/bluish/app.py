@@ -108,8 +108,11 @@ def blu_cli(
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
-    run, result = wf.try_dispatch_job(job, no_deps)
-
+    
+    try:
+        run, result = wf.try_dispatch_job(job, no_deps)
+    except Exception as e:
+        fatal(str(e))
 
 @click.group("bluish")
 @click.option(
@@ -181,8 +184,11 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
-    run, result = wf.try_dispatch_job(job, no_deps)
-
+    
+    try:
+        run, result = wf.try_dispatch_job(job, no_deps)
+    except Exception as e:
+        fatal(str(e))
 
 def test_adhoc():
     blu_cli("ci:fix", False, "DEBUG")

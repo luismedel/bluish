@@ -86,9 +86,10 @@ def upload_file(step: StepContext) -> ProcessResult:
     if "chmod" in inputs:
         permissions = inputs["chmod"]
         info(f"Setting permissions to {permissions} on {destination_file}...")
-        result = step.job.exec(f"chmod {permissions} {destination_file}", step)
-        if result.failed:
+        chmod_result = step.job.exec(f"chmod {permissions} {destination_file}", step)
+        if chmod_result.failed:
             error(f"Failed to set permissions: {result.stderr}")
+            return chmod_result
 
     return result
 

@@ -239,7 +239,7 @@ def can_dispatch(context: Union["StepContext", "JobContext"]) -> bool:
     if context.attrs._if is None:
         return True
 
-    info(context, f"Testing {context.attrs._if}")
+    info(f"Testing {context.attrs._if}")
     if not isinstance(context.attrs._if, str):
         raise ValueError("Condition must be a string")
 
@@ -581,8 +581,13 @@ class JobContext(ContextNode):
         # Define where to capture the output with the >> operator
         capture_filename = f"/tmp/{uuid4().hex}"
         debug(f"Capture file: {capture_filename}")
-        if process.run(f"touch {capture_filename}", host).failed:
-            error(context, f"Failed to create capture file: {capture_filename}")
+        touch_result = process.run(f"touch {capture_filename}", host)
+        if touch_result.failed:
+            error(
+                f"Failed to create capture file {capture_filename}: {touch_result.error}"
+            )
+            return touch_result
+
         # Build the env map
         env = {}
 
@@ -618,6 +623,14 @@ class JobContext(ContextNode):
         working_dir = context.get_inherited_attr("working_directory")
         if working_dir:
             debug(f"Working dir: {working_dir}")
+            debug("Making sure working directory exists...")
+            mkdir_result = process.run(f"mkdir -p {working_dir}", host)
+            if mkdir_result.failed:
+                error(
+                    f"Failed to create working directory {working_dir}: {mkdir_result.error}"
+                )
+                return mkdir_result
+
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
@@ -642,10 +655,11 @@ class JobContext(ContextNode):
         output_result = process.run(f"cat {capture_filename}", host)
         if output_result.failed:
             error(f"Failed to read capture file: {output_result.error}")
-        else:
-            for line in output_result.stdout.splitlines():
-                k, v = line.split("=", maxsplit=1)
-                context.set_value(f"outputs.{k}", v)
+            return output_result
+
+        for line in output_result.stdout.splitlines():
+            k, v = line.split("=", maxsplit=1)
+            context.set_value(f"outputs.{k}", v)
 
         if result.failed:
             msg = f"Command failed with exit status {result.returncode}."
