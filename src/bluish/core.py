@@ -319,7 +319,7 @@ class ContextNode:
         self.attrs.ensure_property("env", {})
         self.attrs.ensure_property("var", {})
 
-        self.id: str | None = self.attrs.id
+        self.id: str = self.attrs.id
         self.env = dict(self.attrs.env)
         self.var = dict(self.attrs.var)
         self.outputs = dict(self.attrs.outputs or {})
@@ -425,10 +425,9 @@ class WorkflowContext(ContextNode):
 
         try:
             for job in self.jobs.values():
-                run, result = job.try_dispatch()
+                run, result = self.try_dispatch_job(job, no_deps=False)
                 if not run:
                     continue
-
                 assert result is not None
 
                 self.result = result
@@ -440,6 +439,58 @@ class WorkflowContext(ContextNode):
             self.status = ExecutionStatus.FINISHED
 
         return (True, self.result)
+
+    def try_dispatch_job(
+        self, job: "JobContext", no_deps: bool
+    ) -> tuple[bool, process.ProcessResult | None]:
+        deps: dict[str, list[JobContext]] = {}
+
+        def gen_dependencies(job: JobContext) -> None:
+            assert job.id is not None
+            if job.id in deps:
+                return
+
+            deps[job.id] = []
+            for dep in job.attrs.depends_on or []:
+                dep_job = self.jobs.get(dep.strip())
+                if not dep_job:
+                    raise RuntimeError(f"Invalid dependency job id: {dep}")
+                deps[job.id].append(dep_job)
+                gen_dependencies(dep_job)
+
+        def _dispatch(job: JobContext) -> tuple[bool, process.ProcessResult | None]:
+            if job.status == ExecutionStatus.FINISHED:
+                info(f"Job {job.id} already dispatched and finished")
+                return (True, job.result)
+            elif job.status == ExecutionStatus.SKIPPED:
+                info(f"Re-running skipped job {job.id}")
+
+            debug("Getting dependency map")
+            dependencies = deps.get(job.id)
+            if dependencies:
+                debug(
+                    f"Dependencies for {job.id}: {', '.join(d.id for d in dependencies)}"
+                )
+                for dependency in dependencies:
+                    _dispatch(dependency)
+
+            run, result = job.try_dispatch()
+            if not run:
+                return (False, None)
+            assert result is not None
+
+            if result.failed:
+                raise RuntimeError(
+                    f"Job {job.id} failed with exit code {result.returncode}:\n{result.error}"
+                )
+
+            return (True, result)
+
+        if not no_deps:
+            debug("Generating dependencies...")
+            gen_dependencies(job)
+
+        return _dispatch(job)
 
 
 class JobContext(ContextNode):

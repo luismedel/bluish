@@ -3,7 +3,6 @@ import tempfile
 from test.utils import create_workflow
 
 import pytest
-from bluish.app import dispatch_job
 from bluish.core import (
     RequiredAttributeError,
     RequiredInputError,
@@ -71,7 +70,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    dispatch_job(wf, "job2", False)
+    _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
     assert wf.jobs["job1"].result.stdout == "This is Job 1"
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
 
@@ -91,7 +90,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    dispatch_job(wf, "job2", True)
+    _, result = wf.try_dispatch_job(wf.jobs["job2"], True)
     assert wf.jobs["job1"].result.stdout == ""
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
 

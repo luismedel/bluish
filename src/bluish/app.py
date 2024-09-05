@@ -7,11 +7,9 @@ import yaml
 
 from bluish.__main__ import PROJECT_VERSION
 from bluish.core import (
-    JobContext,
     WorkflowContext,
     init_commands,
 )
-from bluish.process import ProcessResult
 
 
 class LogFormatter(logging.Formatter):
@@ -80,57 +78,6 @@ def workflow_from_file(file: str) -> WorkflowContext:
     return WorkflowContext(yaml.safe_load(yaml_contents))
 
 
-def dispatch_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
-    available_jobs = wf.jobs
-
-    job = available_jobs.get(job_id)
-    if not job:
-        fatal(f"Invalid job id: {job_id}")
-
-    executed_jobs: set[str] = set()
-    deps: dict[str, list[JobContext]] = {}
-
-    def gen_dependencies(job: JobContext) -> None:
-        assert job.id is not None
-
-        if job.id in deps:
-            return
-        deps[job.id] = []
-        for dep in job.attrs.depends_on or []:
-            dep_job = available_jobs.get(dep.strip())
-            if not dep_job:
-                fatal(f"Invalid dependency job id: {dep}")
-            deps[job.id].append(dep_job)
-            gen_dependencies(dep_job)
-
-    def _dispatch(job: JobContext) -> ProcessResult | None:
-        assert job.id is not None
-
-        if job.id in executed_jobs:
-            return job.result
-        executed_jobs.add(job.id)
-
-        dependencies = deps.get(job.id)
-        if dependencies:
-            for dependency in dependencies:
-                _dispatch(dependency)
-
-        run, result = job.try_dispatch()
-        if not run:
-            return None
-        assert result is not None
-
-        if result.failed:
-            click.secho(result.error, fg="bright_red", bold=True)
-            fatal(f"Job {job_id} failed with exit code {result.returncode}")
-        return result
-
-    if not no_deps:
-        gen_dependencies(job)
-
-    _ = _dispatch(job)
-
-
 @click.command("blu")
 @click.argument("job_id", type=str, required=True)
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
@@ -158,7 +105,10 @@ def blu_cli(
         fatal("No workflow file found.")
 
     wf = workflow_from_file(yaml_path)
-    dispatch_job(wf, job_id, no_deps)
+    job = wf.jobs.get(job_id)
+    if not job:
+        fatal(f"Job '{job_id}' not found.")
+    run, result = wf.try_dispatch_job(job, no_deps)
 
 
 @click.group("bluish")
@@ -228,7 +178,10 @@ def list_jobs(wf: WorkflowContext) -> None:
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.pass_obj
 def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
-    dispatch_job(wf, job_id, no_deps)
+    job = wf.jobs.get(job_id)
+    if not job:
+        fatal(f"Job '{job_id}' not found.")
+    run, result = wf.try_dispatch_job(job, no_deps)
 
 
 def test_adhoc():
