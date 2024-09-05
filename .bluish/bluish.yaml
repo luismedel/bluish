@@ -10,8 +10,13 @@ jobs:
     runs_on: docker://python:3.12-alpine
 
     steps:
+      - uses: system/install-packages
+        with:
+          packages:
+            - jq
+            - curl
+
       - run: |
-          apk update && apk add jq curl
           pypi_version=$(curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version)
           echo "pypi_version=$pypi_version" >> "$BLUISH_OUTPUT"
         set:
