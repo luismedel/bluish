@@ -23,8 +23,8 @@ class LogFormatter(logging.Formatter):
         logging.CRITICAL: "bright_red",
     }
 
-    def __init__(self) -> None:
-        super().__init__(fmt="[%(levelname).1s] %(message)s")
+    def __init__(self, format: str) -> None:
+        super().__init__(fmt=format)
 
     def format(self, record: logging.LogRecord) -> str:
         record.msg = click.style(
@@ -39,9 +39,17 @@ def fatal(message: str, exit_code: int = 1) -> Never:
 
 
 def init_logging(level_name: str) -> None:
+    logging.addLevelName(logging.INFO, "")
+    logging.addLevelName(logging.ERROR, "[ERROR] ")
+    logging.addLevelName(logging.WARNING, "[WARNING] ")
+    logging.addLevelName(logging.DEBUG, "[DEBUG] ")
+    logging.addLevelName(logging.CRITICAL, "[CRITICAL] ")
+
     log_level = getattr(logging, level_name.upper(), logging.INFO)
-    logging.basicConfig(level=log_level, format="[%(levelname).1s] %(message)s")
-    logging.getLogger().handlers[0].setFormatter(LogFormatter())
+    logging.basicConfig(level=log_level)
+    logging.getLogger().handlers[0].setFormatter(
+        LogFormatter("%(levelname)s%(message)s")
+    )
 
 
 def locate_yaml(name: str) -> str | None:

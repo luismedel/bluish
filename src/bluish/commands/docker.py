@@ -1,8 +1,9 @@
 import subprocess
+from logging import error, info, warning
 
 from bluish.core import StepContext, action
-from bluish.logging import decorate_for_log, error, info, warning
 from bluish.process import ProcessResult
+from bluish.utils import decorate_for_log
 
 
 def _build_list_opt(opt: str, items: list[str] | None) -> str:
@@ -67,16 +68,16 @@ def docker_run(step: StepContext) -> ProcessResult:
     image = inputs["image"]
     name = inputs["name"]
 
-    info(step, f"Running container with image {image} and name {name}...")
+    info(f"Running container with image {image} and name {name}...")
     result = docker_ps(step, name=name)
     container_pid = result.stdout.strip()
     if container_pid:
         msg = f"Container with name {name} is already running with id {container_pid}."
         if inputs.get("fail_if_running", True):
-            error(step, msg)
+            error(msg)
             return ProcessResult(returncode=1, stdout=container_pid)
         else:
-            warning(step, msg)
+            warning(msg)
             return ProcessResult(stdout=container_pid)
 
     options = f"--name {name} --detach"
@@ -92,7 +93,7 @@ def docker_run(step: StepContext) -> ProcessResult:
         options += _build_flag(f"--{flag}", inputs.get(flag))
 
     container_pid = run_and_get_pid(f"docker run {options} {image}", step)
-    info(step, f"Container started with id {container_pid}.")
+    info(f"Container started with id {container_pid}.")
     return ProcessResult(stdout=container_pid)
 
 
@@ -106,26 +107,26 @@ def docker_stop(step: StepContext) -> ProcessResult:
     remove_container = inputs.get("remove", False)
     stop_container = True
 
-    info(step, f"Stopping container with {input_attr}...")
+    info(f"Stopping container with {input_attr}...")
 
     result = docker_ps(step, name=name, pid=container_pid)
     container_pid = result.stdout.strip()
     if not container_pid:
         msg = f"Can't find a running container with {input_attr}."
         if inputs.get("fail_if_not_found", True):
-            error(step, msg)
+            error(msg)
             return ProcessResult(returncode=1, stdout=container_pid)
         stop_container = False
-        warning(step, msg)
+        warning(msg)
         # If don't need to remove the container, we can stop here
         if not remove_container:
             return ProcessResult(stdout=container_pid)
     else:
         if name:
-            info(step, f"Container found with id {container_pid}.")
+            info(f"Container found with id {container_pid}.")
 
     if stop_container:
-        info(step, f"Stopping container with {input_attr}...")
+        info(f"Stopping container with {input_attr}...")
         options = ""
         for opt in ["signal", "time"]:
             options += _build_opt(f"--{opt}", inputs.get(opt))
@@ -148,7 +149,7 @@ def docker_exec(step: StepContext) -> ProcessResult:
 
     container_pid = docker_ps(step, name=name, pid=container_pid).stdout.strip()
     if not container_pid:
-        error(step, f"Can't find a running container with {input_attr}.")
+        error(f"Can't find a running container with {input_attr}.")
         return ProcessResult(returncode=1)
 
     options = ""
@@ -173,16 +174,16 @@ def docker_exec(step: StepContext) -> ProcessResult:
         i += 1
 
         if echo_commands:
-            info(step, line)
+            info(line)
         result = step.job.exec(f"docker exec {options} {container_pid} {line}", step)
         output += result.stdout
 
         if echo_output:
-            info(step, decorate_for_log(result.stdout))
+            info(decorate_for_log(result.stdout))
 
         if result.failed:
             if echo_output and result.stderr:
-                error(step, decorate_for_log(result.stderr))
+                error(decorate_for_log(result.stderr))
 
             # TODO: This is a hack to get the command that failed
             cp = subprocess.CompletedProcess(
@@ -199,16 +200,16 @@ def docker_create_network(step: StepContext) -> ProcessResult:
 
     name = inputs["name"]
 
-    info(step, f"Creating network {name}...")
+    info(f"Creating network {name}...")
     result = step.job.exec(f"docker network ls -f name={name} --quiet", step)
 
     network_id = result.stdout.strip()
     if network_id:
         msg = f"Network {name} already exists with id {network_id}."
         if inputs.get("fail_if_exists", True):
-            error(step, msg)
+            error(msg)
             return ProcessResult(returncode=1)
-        warning(step, msg)
+        warning(msg)
     else:
         options = "--attachable"
         for opt in ["label"]:
@@ -218,10 +219,10 @@ def docker_create_network(step: StepContext) -> ProcessResult:
 
         result = step.job.exec(f"docker network create {options} {name}", step)
         if result.failed:
-            error(step, f"Failed to create network {name}.")
+            error(f"Failed to create network {name}.")
             return result
 
         network_id = result.stdout.strip()
-        info(step, f"Network {name} created with id {network_id}.")
+        info(f"Network {name} created with id {network_id}.")
 
     return ProcessResult(stdout=network_id)

@@ -3,13 +3,13 @@ import os
 import re
 from enum import Enum
 from functools import wraps
+from logging import debug, error, info, warning
 from typing import Any, Callable, Dict, Optional, TypeVar, Union, cast
 from uuid import uuid4
 
 from dotenv import dotenv_values
 
 import bluish.process as process
-from bluish.logging import debug, error, info, warning
 
 DEFAULT_ACTION = "core/default-action"
 
@@ -443,11 +443,13 @@ class WorkflowContext(ContextNode):
 
 
 class JobContext(ContextNode):
-    def __init__(self, parent: WorkflowContext, id: str, definition: dict[str, Any]):
+    def __init__(
+        self, parent: WorkflowContext, step_id: str, definition: dict[str, Any]
+    ):
         super().__init__(parent, definition)
 
         self.workflow = parent
-        self.id = id
+        self.id = step_id
 
         self.runs_on_host: str | None = None
 
@@ -468,20 +470,25 @@ class JobContext(ContextNode):
         for i, step in enumerate(self.attrs.steps):
             if "id" not in step:
                 step["id"] = f"step_{i+1}"
-            key = step["id"]
-            self.steps[key] = StepContext(self, step)
+            step_id = step["id"]
+            step = StepContext(self, step)
+            if not step.id:
+                step.id = step_id
+            self.steps[step_id] = step
 
     def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
         self.status = ExecutionStatus.RUNNING
 
-        try:
-            self.runs_on_host = process.prepare_host(
-                self.expand_expr(self.attrs.runs_on)
-            )
+        name = self.attrs.name or self.id
+        info("")
+        info(f"** {name}")
 
+        self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
+
+        try:
             if not can_dispatch(self):
                 self.status = ExecutionStatus.SKIPPED
-                info(self, "Job skipped")
+                info("Job skipped")
                 return (False, None)
 
             for step in self.steps.values():
@@ -522,7 +529,7 @@ class JobContext(ContextNode):
 
         # Define where to capture the output with the >> operator
         capture_filename = f"/tmp/{uuid4().hex}"
-        debug(self, f"Capture file: {capture_filename}")
+        debug(f"Capture file: {capture_filename}")
         if process.run(f"touch {capture_filename}", host).failed:
             error(context, f"Failed to create capture file: {capture_filename}")
         # Build the env map
@@ -559,18 +566,18 @@ class JobContext(ContextNode):
 
         working_dir = context.get_inherited_attr("working_directory")
         if working_dir:
-            debug(self, f"Working dir: {working_dir}")
+            debug(f"Working dir: {working_dir}")
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
             line = line.strip()
             if line:
-                info(self, line)
+                info(line)
 
         def stderr_handler(line: str) -> None:
             line = line.strip()
             if line:
-                info(self, line)
+                info(line)
 
         result = process.run(
             command,
@@ -583,7 +590,7 @@ class JobContext(ContextNode):
         # but it currently causes an infinite recursion
         output_result = process.run(f"cat {capture_filename}", host)
         if output_result.failed:
-            error(self, f"Failed to read capture file: {output_result.error}")
+            error(f"Failed to read capture file: {output_result.error}")
         else:
             for line in output_result.stdout.splitlines():
                 k, v = line.split("=", maxsplit=1)
@@ -591,7 +598,7 @@ class JobContext(ContextNode):
 
         if result.failed:
             msg = f"Command failed with exit status {result.returncode}."
-            warning(self, msg)
+            warning(msg)
 
         return result
 
@@ -614,29 +621,31 @@ class StepContext(ContextNode):
         self.outputs = dict(self.attrs.outputs or {})
 
     def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+        if self.attrs.name:
+            info(f"* {self.attrs.name} ({self.id})")
+        else:
+            info(f"* {self.id}")
+
         if not can_dispatch(self):
             self.status = ExecutionStatus.SKIPPED
-            info(self, "Step skipped")
+            info("Step skipped")
             return (False, None)
 
         self.status = ExecutionStatus.RUNNING
 
         try:
-            if self.attrs.name:
-                info(self, self.expand_expr(self.attrs.name))
-
             fqn = self.attrs.uses or DEFAULT_ACTION
             fn = REGISTERED_ACTIONS.get(fqn)
             if not fn:
                 raise ValueError(f"Unknown action: {fqn}")
 
-            info(self, f"Run {fqn}")
+            info(f"Run {fqn}")
             if self.inputs:
-                info(self, "with:")
+                info("with:")
                 for k, v in self.inputs.items():
                     v = self.expand_expr(v)
                     self.inputs[k] = v
-                    info(self, f"  {k}: {v}")
+                    info(f"  {k}: {v}")
 
             self.result = fn(self)
             self.failed = self.result.failed
@@ -672,7 +681,7 @@ def action(
     ) -> Callable[[StepContext], process.ProcessResult]:
         @wraps(func)
         def wrapper(step: StepContext) -> process.ProcessResult:
-            def exists(key: str, values: dict) -> bool:
+            def key_exists(key: str, values: dict) -> bool:
                 """Checks if a key (or pipe-separated alternative keys) exists in a dictionary."""
                 return (
                     "|" in key and any(i in values for i in key.split("|"))
@@ -680,7 +689,7 @@ def action(
 
             if required_attrs:
                 for attr in required_attrs:
-                    if not exists(attr, step.attrs.__dict__):
+                    if not key_exists(attr, step.attrs.__dict__):
                         raise RequiredAttributeError(attr)
 
             if required_inputs:
@@ -688,7 +697,7 @@ def action(
                     raise RequiredInputError(required_inputs[0])
 
                 for param in required_inputs:
-                    if not exists(param, step.inputs):
+                    if not key_exists(param, step.inputs):
                         raise RequiredInputError(param)
 
             step.result = func(step)
@@ -697,7 +706,7 @@ def action(
                 variables = step.attrs.set
                 for key, value in variables.items():
                     value = step.expand_expr(value)
-                    debug(step, f"Setting {key} = {value}")
+                    debug(f"Setting {key} = {value}")
                     step.set_value(key, value)
 
             return step.result

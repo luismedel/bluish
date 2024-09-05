@@ -1,7 +1,7 @@
 import os
+from logging import error, info
 
 from bluish.core import StepContext, action
-from bluish.logging import error, info
 from bluish.process import ProcessResult, install_package
 
 
@@ -17,10 +17,10 @@ def run_git_command(command: str, step: StepContext) -> ProcessResult:
 
 def prepare_environment(step: StepContext) -> ProcessResult:
     if step.job.exec("which git", step).failed:
-        info(step, "Installing git...")
+        info("Installing git...")
         result = install_package(step.job.runs_on_host, "git")
         if result.failed:
-            error(step, f"Failed to install git. Error: {result.error}")
+            error(f"Failed to install git. Error: {result.error}")
             return result
 
     return ProcessResult()
@@ -51,13 +51,13 @@ def git_checkout(step: StepContext) -> ProcessResult:
         repository: str = inputs["repository"]
         repo_name = os.path.basename(repository)
 
-        info(step, f"Cloning repository: {repository}...")
+        info(f"Cloning repository: {repository}...")
         result = run_git_command(
             f"git clone {repository} {options} ./{repo_name}", step
         )
 
         # Update the current job working dir to the newly cloned repo
-        info(step, f"Setting working directory to: {repo_name}...")
+        info(f"Setting working directory to: {repo_name}...")
         wd = step.get_inherited_attr("working_directory", ".")
         step.job.set_attr("working_directory", f"{wd}/{repo_name}")
 
