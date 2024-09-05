@@ -148,18 +148,35 @@ jobs:
 
 def test_working_directory() -> None:
     wf = create_workflow("""
-env:
-    WORKING_DIR: /tmp
+
+working_directory: /tmp
 
 jobs:
-    working_directory:
+    test_job:
         name: "Working Directory"
         steps:
             - run: pwd
 """)
     _, result = wf.try_dispatch()
 
-    assert wf.jobs["working_directory"].result.stdout == "/tmp"
+    assert wf.jobs["test_job"].result.stdout == "/tmp"
+
+
+def test_working_directory_override() -> None:
+    wf = create_workflow("""
+
+working_directory: /tmp
+
+jobs:
+    test_job:
+        name: "Working Directory"
+        working_directory: /home
+        steps:
+            - run: pwd
+""")
+    _, result = wf.try_dispatch()
+
+    assert wf.jobs["test_job"].result.stdout == "/home"
 
 
 def test_default_run() -> None:
@@ -205,6 +222,26 @@ jobs:
     assert wf.jobs["hello_python"].result.stdout == "Hello, World!"
 
 
+def test_shell_override() -> None:
+    wf = create_workflow("""
+shell: sh
+
+jobs:
+    hello_python:
+        name: "Hello, World!"
+        shell: node  # Overridde at job level
+
+        steps:
+            - shell: python  # Effective value
+              run: |
+                v = "World"
+                print(f'Hello, {v}!')
+""")
+    _, result = wf.try_dispatch()
+
+    assert wf.jobs["hello_python"].result.stdout == "Hello, World!"
+
+
 def test_mandatory_attributes() -> None:
     wf = create_workflow("""
 jobs:
@@ -240,8 +277,7 @@ jobs:
 
 def test_cwd() -> None:
     wf = create_workflow("""
-env:
-    WORKING_DIR: /tmp
+working_directory: /tmp
 
 jobs:
     cwd:
@@ -277,16 +313,16 @@ var:
     PATH: "/tmp"
 
 jobs:
-    expansion:
+    test_job:
         name: Test expansion
-        env:
-            WORKING_DIR: ${{ var.PATH }}
+        var:
+            DIRECTORY: ${{ var.PATH }}
         steps:
-            - run: echo '${{ env.WORKING_DIR }}'
+            - run: echo '${{ var.DIRECTORY }}'
 """)
     _, result = wf.try_dispatch()
 
-    assert wf.jobs["expansion"].result.stdout == "/tmp"
+    assert wf.jobs["test_job"].result.stdout == "/tmp"
 
 
 def test_values() -> None:

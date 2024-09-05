@@ -97,7 +97,9 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
 
     if root == "":
         if varname == "result":
-            return prepare_value("" if ctx.result is None else ctx.result.stdout.strip())
+            return prepare_value(
+                "" if ctx.result is None else ctx.result.stdout.strip()
+            )
         return (False, "")
     elif root in ("env", "var"):
         varname = name[4:]
@@ -300,6 +302,9 @@ class DictAttrs:
         else:
             self.__dict__[name] = value
 
+    def __contains__(self, name: str) -> bool:
+        return name in self.__dict__
+
     def ensure_property(self, name: str, default_value: Any) -> None:
         value = getattr(self, name, None)
         if value is None:
@@ -373,14 +378,26 @@ class ContextNode:
     def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
         raise NotImplementedError()
 
+    def set_attr(self, name: str, value: Any) -> None:
+        setattr(self.attrs, name, value)
+
+    def try_get_attr(self, name: str) -> tuple[bool, Any]:
+        if hasattr(self, name):
+            return (True, getattr(self, name))
+        elif name in self.attrs:
+            return (True, getattr(self.attrs, name))
+        else:
+            return (False, None)
+
     def get_inherited_attr(
         self, name: str, default: TResult | None = None
     ) -> TResult | None:
-        obj: ContextNode | None = self
-        while obj is not None:
-            if not hasattr(obj.attrs, name):
-                return cast(TResult, getattr(obj.attrs, name))
-            obj = obj.parent
+        ctx: ContextNode | None = self
+        while ctx is not None:
+            found, v = ctx.try_get_attr(name)
+            if found:
+                return cast(TResult, v)
+            ctx = ctx.parent
         return default
 
 
@@ -413,7 +430,7 @@ class WorkflowContext(ContextNode):
                     continue
 
                 assert result is not None
-                
+
                 self.result = result
 
                 if result.failed and not job.attrs.continue_on_error:
@@ -473,7 +490,7 @@ class JobContext(ContextNode):
                     continue
 
                 assert result is not None
-                
+
                 self.result = result
 
                 if result.failed and not step.attrs.continue_on_error:
@@ -532,11 +549,7 @@ class JobContext(ContextNode):
             command = f"{env_str}; {command}"
 
         if shell is None:
-            shell = (
-                context.attrs.shell
-                if context.attrs.shell is not None
-                else DEFAULT_SHELL
-            )
+            shell = context.get_inherited_attr("shell", DEFAULT_SHELL)
         assert shell is not None
 
         interpreter = SHELLS.get(shell, shell)
@@ -544,7 +557,7 @@ class JobContext(ContextNode):
             b64 = base64.b64encode(command.encode()).decode()
             command = f"echo {b64} | base64 -di - | {interpreter}"
 
-        working_dir = context.get_value("env.WORKING_DIR", "")
+        working_dir = context.get_inherited_attr("working_directory")
         if working_dir:
             debug(self, f"Working dir: {working_dir}")
             command = f'cd "{working_dir}" && {command}'

@@ -5,8 +5,16 @@ from bluish.logging import error, info
 from bluish.process import ProcessResult
 
 
-@action("core/default-action", required_attrs=["run"])
+@action("core/default-action", required_attrs=["run|set"])
 def generic_run(step: StepContext) -> ProcessResult:
+    """The generic action. It runs the command specified in the `run` attribute.
+
+    Note: `set` dict is processed in the `@action` decorator. We require
+    it here to enforce either run or set (or both) and avoid having empty
+    actions."""
+    if not step.attrs.run:
+        return ProcessResult()
+
     command = step.attrs.run.strip()
 
     echo_commands = step.get_inherited_attr("echo_commands", True)

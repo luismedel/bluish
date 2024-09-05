@@ -20,14 +20,16 @@ class LogFormatter(logging.Formatter):
         logging.INFO: "bright_white",
         logging.WARNING: "yellow",
         logging.ERROR: "red",
-        logging.CRITICAL: "bright_red"
+        logging.CRITICAL: "bright_red",
     }
 
     def __init__(self) -> None:
         super().__init__(fmt="[%(levelname).1s] %(message)s")
 
     def format(self, record: logging.LogRecord) -> str:
-        record.msg = click.style(record.msg, fg=self.COLORS.get(record.levelno, "white"))
+        record.msg = click.style(
+            record.msg, fg=self.COLORS.get(record.levelno, "white")
+        )
         return super().format(record)
 
 
@@ -219,6 +221,7 @@ def list_jobs(wf: WorkflowContext) -> None:
 @click.pass_obj
 def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
     dispatch_job(wf, job_id, no_deps)
+
 
 def test_adhoc():
     blu_cli("ci:fix", False, "DEBUG")

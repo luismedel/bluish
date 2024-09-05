@@ -58,8 +58,8 @@ def git_checkout(step: StepContext) -> ProcessResult:
 
         # Update the current job working dir to the newly cloned repo
         info(step, f"Setting working directory to: {repo_name}...")
-        wd = step.job.get_value("env.WORKING_DIR", "")
-        step.job.set_value("env.WORKING_DIR", f"{wd}/{repo_name}")
+        wd = step.get_inherited_attr("working_directory", ".")
+        step.job.set_attr("working_directory", f"{wd}/{repo_name}")
 
         return result
     finally:

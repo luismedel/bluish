@@ -12,7 +12,7 @@ class ProcessResult(subprocess.CompletedProcess[str]):
     @property
     def failed(self) -> bool:
         return self.returncode != 0
-    
+
     @property
     def error(self) -> str:
         return self.stderr or self.stdout
@@ -150,9 +150,7 @@ def run(
 
 def get_flavor(host: str | None) -> str:
     ids = {}
-    for line in run(
-        "cat /etc/os-release | grep ^ID", host
-    ).stdout.splitlines():
+    for line in run("cat /etc/os-release | grep ^ID", host).stdout.splitlines():
         key, value = line.split("=", maxsplit=1)
         ids[key] = value.strip().strip('"')
     return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
