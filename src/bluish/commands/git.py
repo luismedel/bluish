@@ -52,15 +52,18 @@ def git_checkout(step: StepContext) -> ProcessResult:
         repo_name = os.path.basename(repository)
 
         info(f"Cloning repository: {repository}...")
-        result = run_git_command(
+        clone_result = run_git_command(
             f"git clone {repository} {options} ./{repo_name}", step
         )
+        if clone_result.failed:
+            error(f"Failed to clone repository: {clone_result.error}")
+            return clone_result
 
         # Update the current job working dir to the newly cloned repo
         info(f"Setting working directory to: {repo_name}...")
         wd = step.get_inherited_attr("working_directory", ".")
         step.job.set_attr("working_directory", f"{wd}/{repo_name}")
 
-        return result
+        return clone_result
     finally:
         cleanup_environment(step)
