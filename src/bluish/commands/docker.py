@@ -1,5 +1,4 @@
-import subprocess
-from logging import error, info, warning
+from logging import debug, error, info, warning
 
 from bluish.core import StepContext, action
 from bluish.process import ProcessResult
@@ -23,6 +22,10 @@ def _build_opt(opt: str, value: str | None) -> str:
 
 def _build_flag(flag: str, value: bool | None) -> str:
     return "" if not value else f" {flag}"
+
+
+def _is_valid_docker_id(id: str) -> bool:
+    return len(id) == 64 and all(c in "0123456789abcdef" for c in id)
 
 
 class EmptyPIDError(Exception):
@@ -52,12 +55,26 @@ def docker_build(step: StepContext) -> ProcessResult:
 
     working_dir = step.get_inherited_attr("working_directory", ".")
     context = inputs.get("context", working_dir)
-    return step.job.exec(f"docker build {options} {context}", step)
+    build_result = step.job.exec(f"docker build {options} {context}", step)
+    if build_result.failed:
+        error(f"Failed to build image: {build_result.error}")
+    return build_result
 
 
 @action("docker/get-pid", required_inputs=["name"])
 def docker_get_pid(step: StepContext) -> ProcessResult:
     name = step.inputs["name"]
+
+    ps_result = docker_ps(step, name=name)
+    if ps_result.failed:
+        error(f"Failed to get container id for {name}: {ps_result.error}")
+        return ps_result
+
+    pid = ps_result.stdout.strip()
+    if not _is_valid_docker_id(pid):
+        error(f"Failed to get container id for {name}: {pid}")
+        return ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
+
     return ProcessResult(stdout=docker_ps(step, name=name).stdout.strip())
 
 
@@ -69,8 +86,8 @@ def docker_run(step: StepContext) -> ProcessResult:
     name = inputs["name"]
 
     info(f"Running container with image {image} and name {name}...")
-    result = docker_ps(step, name=name)
-    container_pid = result.stdout.strip()
+    ps_result = docker_ps(step, name=name)
+    container_pid = ps_result.stdout.strip()
     if container_pid:
         msg = f"Container with name {name} is already running with id {container_pid}."
         if inputs.get("fail_if_running", True):
@@ -92,7 +109,16 @@ def docker_run(step: StepContext) -> ProcessResult:
     for flag in ["quiet"]:
         options += _build_flag(f"--{flag}", inputs.get(flag))
 
-    container_pid = run_and_get_pid(f"docker run {options} {image}", step)
+    run_result = step.job.exec(f"docker run {options} {image}", step)
+    if run_result.failed:
+        error(f"Failed to start container with image {image}: {run_result.error}")
+        return run_result
+
+    container_pid = run_result.stdout.strip()
+    if not _is_valid_docker_id(container_pid):
+        error(f"Failed to get container id for {name}: {container_pid}")
+        return ProcessResult(returncode=1, stdout=run_result.stdout, stderr=run_result.stderr)
+
     info(f"Container started with id {container_pid}.")
     return ProcessResult(stdout=container_pid)
 
@@ -109,31 +135,43 @@ def docker_stop(step: StepContext) -> ProcessResult:
 
     info(f"Stopping container with {input_attr}...")
 
-    result = docker_ps(step, name=name, pid=container_pid)
-    container_pid = result.stdout.strip()
-    if not container_pid:
-        msg = f"Can't find a running container with {input_attr}."
+    ps_result = docker_ps(step, name=name, pid=container_pid)
+    if ps_result.failed:
+        msg = f"Can't find a container with {input_attr}."
         if inputs.get("fail_if_not_found", True):
             error(msg)
-            return ProcessResult(returncode=1, stdout=container_pid)
+            return ps_result
         stop_container = False
         warning(msg)
         # If don't need to remove the container, we can stop here
         if not remove_container:
-            return ProcessResult(stdout=container_pid)
-    else:
-        if name:
-            info(f"Container found with id {container_pid}.")
+            return ProcessResult()
+
+    pid = ps_result.stdout.strip()
+    if not _is_valid_docker_id(pid):
+        error(f"Failed to verify container id for container with {input_attr}: {pid}")
+        return ProcessResult(returncode=1, stdout=ps_result.stdout, stderr=ps_result.stderr)
+
+    container_pid = pid
+    if name:
+        info(f"Container found with id {container_pid}.")
 
     if stop_container:
         info(f"Stopping container with {input_attr}...")
         options = ""
         for opt in ["signal", "time"]:
             options += _build_opt(f"--{opt}", inputs.get(opt))
-        _ = run_and_get_pid(f"docker container stop {options} {container_pid}", step)
+
+        stop_result = step.job.exec(f"docker container stop {options} {container_pid}", step)
+        if stop_result.failed:
+            error(f"Failed to stop container with {input_attr}: {stop_result.error}")
+            return stop_result
 
     if remove_container:
-        _ = run_and_get_pid(f"docker container rm {options} {container_pid}", step)
+        rm_result = step.job.exec(f"docker container rm {options} {container_pid}", step)
+        if rm_result.failed:
+            error(f"Failed to remove container with {input_attr}: {rm_result.error}")
+            return rm_result
 
     return ProcessResult(stdout=container_pid)
 
@@ -147,10 +185,15 @@ def docker_exec(step: StepContext) -> ProcessResult:
     command = inputs["run"]
     input_attr = f"name {name}" if name else f"pid {container_pid}"
 
-    container_pid = docker_ps(step, name=name, pid=container_pid).stdout.strip()
-    if not container_pid:
-        error(f"Can't find a running container with {input_attr}.")
-        return ProcessResult(returncode=1)
+    pid_result = docker_ps(step, name=name, pid=container_pid)
+    if pid_result.failed:
+        error(f"Can't find a running container with {input_attr}: {pid_result.error}")
+        return pid_result if pid_result.failed else ProcessResult(returncode=1)
+
+    container_pid = pid_result.stdout.strip()
+    if not _is_valid_docker_id(container_pid):
+        error(f"Failed to verify container id for container with {input_attr}: {container_pid}")
+        return ProcessResult(returncode=1, stdout=pid_result.stdout, stderr=pid_result.stderr)
 
     options = ""
     options += _build_list_opt("-e", inputs.get("env"))
@@ -182,14 +225,9 @@ def docker_exec(step: StepContext) -> ProcessResult:
             info(decorate_for_log(result.stdout))
 
         if result.failed:
-            if echo_output and result.stderr:
-                error(decorate_for_log(result.stderr))
-
-            # TODO: This is a hack to get the command that failed
-            cp = subprocess.CompletedProcess(
-                command, result.returncode, output, result.stderr
-            )
-            return ProcessResult.from_subprocess_result(cp)
+            if echo_output:
+                error(decorate_for_log(result.error))
+            return ProcessResult(returncode=result.returncode, stdout=output, stderr=result.stderr)
 
     return ProcessResult(stdout=output)
 
@@ -201,15 +239,21 @@ def docker_create_network(step: StepContext) -> ProcessResult:
     name = inputs["name"]
 
     info(f"Creating network {name}...")
-    result = step.job.exec(f"docker network ls -f name={name} --quiet", step)
 
-    network_id = result.stdout.strip()
+    debug(f"Checking if network {name} already exists...")
+    network_ls_result = step.job.exec(f"docker network ls -f name={name} --quiet", step)    
+    if network_ls_result.failed:
+        error(f"Failed to list networks: {network_ls_result.error}")
+        return network_ls_result
+
+    network_id = network_ls_result.stdout.strip()
     if network_id:
         msg = f"Network {name} already exists with id {network_id}."
         if inputs.get("fail_if_exists", True):
             error(msg)
             return ProcessResult(returncode=1)
-        warning(msg)
+        else:
+            warning(msg)
     else:
         options = "--attachable"
         for opt in ["label"]:
@@ -217,12 +261,15 @@ def docker_create_network(step: StepContext) -> ProcessResult:
         for flag in ["ingress", "internal"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
 
-        result = step.job.exec(f"docker network create {options} {name}", step)
-        if result.failed:
-            error(f"Failed to create network {name}.")
-            return result
+        network_create_result = step.job.exec(f"docker network create {options} {name}", step)
+        if network_create_result.failed:
+            error(f"Failed to create network {name}: {network_create_result.error}")
+            return network_create_result
 
-        network_id = result.stdout.strip()
+        network_id = network_create_result.stdout.strip()
+        if not _is_valid_docker_id(network_id):
+            error(f"Failed to get network id for {name}: {network_id}")
+            return ProcessResult(returncode=1, stdout=network_create_result.stdout, stderr=network_create_result.stderr)
         info(f"Network {name} created with id {network_id}.")
 
     return ProcessResult(stdout=network_id)
