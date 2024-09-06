@@ -9,7 +9,7 @@ A CI/CD/automation tool that runs everywhere and have `make` ergonomics.
 - Runs _everywhere_, not tied to any vendor. Fire Bluish workflows from Github Actions, from a Gitlab workflow or from a cron-invoked a shell script.  
 - Simple as hell. I only add new actions whenever I need them.
 
-## Documentation
+## Documentation
 
 Please, refer to the [project wiki](https://github.com/luismedel/bluish/wiki).
 
