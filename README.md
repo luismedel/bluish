@@ -1,14 +1,17 @@
 # Bluish
 
-The CI/CD/automation tool I use for my personal projects.
-
-Why use a rock-solid tool when you can code your own crappy _Make on steroids_ alternative?
+A CI/CD/automation tool that runs everywhere and have `make` ergonomics.
 
 ## Features
 
 - YAML-based declarative approach (not that I love YAML, but...)
 - Githubactions-esque philosphy, but way simpler. In fact, Bluish is nearer to Make than to GA.
-- Simple as fuck. I only add new actions whenever I need them.
+- Runs _everywhere_, not tied to any vendor. Fire Bluish workflows from Github Actions, from a Gitlab workflow or from a cron-invoked a shell script.  
+- Simple as hell. I only add new actions whenever I need them.
+
+## Documentation
+
+Please, refer to the [project wiki](https://github.com/luismedel/bluish/wiki).
 
 ## How do Bluish workflows look?
 
@@ -47,5 +50,3 @@ jobs:
       - run: |
           pytest -n ${{ var.PYTEST_RUNNERS }}
 ```
-
-Note that the similarity with other tools like Github Actions is very superficial. Please, refer to the [project docs](https://github.com/luismedel/bluish/wiki) for more details about the _huge_ differences.
