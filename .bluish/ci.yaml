@@ -29,3 +29,9 @@ jobs:
     steps:
       - run: |
           pytest -n 2
+
+  test-all:
+    name: Runs pytest
+    steps:
+      - run: |
+          pytest -n 2 --run-docker

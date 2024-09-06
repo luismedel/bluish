@@ -510,6 +510,7 @@ jobs:
     assert wf.jobs["pass_env"].result.stdout == "Hello, World!"
 
 
+@pytest.mark.docker
 def test_docker_pass_env() -> None:
     wf = create_workflow("""
 env:
@@ -527,6 +528,7 @@ jobs:
     assert wf.jobs["pass_env"].result.stdout == "Hello, World!"
 
 
+@pytest.mark.docker
 def test_docker_run() -> None:
     wf = create_workflow("""
 jobs:
@@ -541,6 +543,7 @@ jobs:
     assert wf.jobs["docker_run"].result.stdout == "Hello, World!"
 
 
+@pytest.mark.docker
 def test_docker_file_upload() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")
@@ -560,6 +563,7 @@ jobs:
     assert wf.jobs["file_upload"].result.stdout == "Hello, World!"
 
 
+@pytest.mark.docker
 def test_docker_file_download() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")
@@ -583,6 +587,7 @@ jobs:
             assert f.read().strip() == "Hello, World!"
 
 
+@pytest.mark.docker
 def test_docker_file_download_failed() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         temp_file.write(b"Hello, World!")

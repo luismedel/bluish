@@ -10,6 +10,7 @@ def initialize_commands():
     init_commands()
 
 
+@pytest.mark.docker
 def test_install_packages_ubuntu() -> None:
     wf = create_workflow("""
 jobs:
@@ -20,12 +21,13 @@ jobs:
         with:
           packages:
             - moreutils
-            - git
+            - jq
 """)
     _, result = wf.try_dispatch()
     assert wf.jobs["test_job"].result.failed is False
 
 
+@pytest.mark.docker
 def test_install_packages_alpine() -> None:
     wf = create_workflow("""
 jobs:
@@ -35,13 +37,14 @@ jobs:
       - uses: system/install-packages
         with:
           packages:
-              - moreutils
-              - git
+            - moreutils
+            - jq
 """)
     _, result = wf.try_dispatch()
     assert wf.jobs["test_job"].result.failed is False
 
 
+@pytest.mark.docker
 def test_install_packages_failed() -> None:
     wf = create_workflow("""
 jobs:

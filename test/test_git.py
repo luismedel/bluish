@@ -10,6 +10,7 @@ def initialize_commands():
     init_commands()
 
 
+@pytest.mark.docker
 def test_docker_checkout() -> None:
     wf = create_workflow("""
 jobs:
