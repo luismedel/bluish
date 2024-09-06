@@ -1,10 +1,12 @@
 import contextlib
 import logging
 import os
+from io import StringIO
 from typing import Never
 
 import click
 import yaml
+from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
 from bluish.core import (
@@ -38,12 +40,6 @@ def fatal(message: str, exit_code: int = 1) -> Never:
 
 
 def init_logging(level_name: str) -> None:
-    logging.addLevelName(logging.INFO, "")
-    logging.addLevelName(logging.ERROR, "[ERROR] ")
-    logging.addLevelName(logging.WARNING, "[WARNING] ")
-    logging.addLevelName(logging.DEBUG, "[DEBUG] ")
-    logging.addLevelName(logging.CRITICAL, "[CRITICAL] ")
-
     log_level = getattr(logging, level_name.upper(), logging.INFO)
     logging.basicConfig(level=log_level)
     logging.getLogger().handlers[0].setFormatter(
@@ -192,6 +188,54 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
             exit(result.returncode)
     except Exception as e:
         fatal(str(e))
+
+
+@bluish_cli.command("serve")
+@click.argument(
+    "workflow_path",
+    type=click.Path(file_okay=False, dir_okay=True, exists=True),
+    required=True,
+)
+@click.option("--host", type=str, default="localhost", help="Host")
+@click.option("--port", type=int, default=5000, help="Port")
+def serve(workflow_path: str, host: str, port: int) -> None:
+    app = Flask(__name__)
+
+    @app.route("/")
+    def serve_index():
+        return abort(404)
+
+    @app.route("/<file>/<job_id>")
+    def dispatch_job(file: str, job_id: str):
+        file = f"{file}.yaml"
+        if file not in os.listdir(workflow_path):
+            return abort(404)
+
+        wf = workflow_from_file(f"{workflow_path}/{file}")
+        job = wf.jobs.get(job_id)
+        if not job:
+            return abort(404)
+
+        log_level_name = request.args.get("log_level", "INFO")
+        log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+
+        log_stream = StringIO()
+        logging.basicConfig(
+            stream=log_stream, level=log_level, format="%(message)s", force=True
+        )
+
+        run, result = wf.try_dispatch_job(job, False)
+
+        return jsonify(
+            {
+                "run": run,
+                "stdout": log_stream.getvalue().splitlines(),
+                "stderr": result.stderr if result else None,
+                "returncode": result.returncode if result else None,
+            }
+        )
+
+    app.run(host=host, port=port)
 
 
 def test_adhoc():
