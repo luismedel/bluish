@@ -2,3 +2,4 @@
 ruff==0.1.4
 mypy==1.6.1
 types-PyYAML==6.0.12.20240808
+types-flask==1.1.6
