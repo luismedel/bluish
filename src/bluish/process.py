@@ -154,7 +154,9 @@ def get_flavor(host: str | None) -> str:
     return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
 
 
-def install_package(host: str | None, packages: list[str], flavor: str = "auto") -> ProcessResult:
+def install_package(
+    host: str | None, packages: list[str], flavor: str = "auto"
+) -> ProcessResult:
     """Installs a package on a host."""
 
     package_list = " ".join(packages)

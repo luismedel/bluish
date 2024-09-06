@@ -17,7 +17,7 @@ jobs:
   test_job:
     runs_on: docker://ubuntu:latest
     steps:
-      - uses: system/install-packages
+      - uses: linux/install-packages
         with:
           packages:
             - moreutils
@@ -34,7 +34,7 @@ jobs:
   test_job:
     runs_on: docker://alpine:latest
     steps:
-      - uses: system/install-packages
+      - uses: linux/install-packages
         with:
           packages:
             - moreutils
@@ -51,7 +51,7 @@ jobs:
   test_job:
     runs_on: docker://alpine:latest
     steps:
-      - uses: system/install-packages
+      - uses: linux/install-packages
         with:
           packages:
               - thispackagedoesnotexist-1.0.0
