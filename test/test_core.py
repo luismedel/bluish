@@ -4,6 +4,7 @@ from test.utils import create_workflow
 
 import pytest
 from bluish.core import (
+    CircularDependencyError,
     ExecutionStatus,
     RequiredAttributeError,
     RequiredInputError,
@@ -74,6 +75,30 @@ jobs:
     _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
     assert wf.jobs["job1"].result.stdout == "This is Job 1"
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
+
+
+def test_depends_on_circular() -> None:
+    wf = create_workflow("""
+jobs:
+    job1:
+        name: "Job 1"
+        depends_on:
+            - job2
+        steps:
+            - run: echo 'This is Job 1'
+    job2:
+        name: "Job 2"
+        depends_on:
+            - job1
+        steps:
+            - run: echo 'This is Job 2, step 1'
+            - run: echo 'This is Job 2, step 2'
+""")
+    try:
+        _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
+        assert False
+    except CircularDependencyError:
+        assert True
 
 
 def test_depends_on_failed() -> None:

@@ -36,6 +36,10 @@ class ExecutionStatus(Enum):
     SKIPPED = "SKIPPED"
 
 
+class CircularDependencyError(Exception):
+    pass
+
+
 def set_obj_attr(obj: Any, name: str, value: Any) -> None:
     if isinstance(obj, dict):
         obj[name] = value
@@ -445,16 +449,17 @@ class WorkflowContext(ContextNode):
     ) -> tuple[bool, process.ProcessResult | None]:
         deps: dict[str, list[JobContext]] = {}
 
-        def gen_dependencies(job: JobContext) -> None:
-            assert job.id is not None
-            if job.id in deps:
+        def gen_dependencies(inner_job: JobContext) -> None:
+            if inner_job.id in deps:
                 return
 
-            deps[job.id] = []
-            for dep in job.attrs.depends_on or []:
+            deps[inner_job.id] = []
+            for dep in inner_job.attrs.depends_on or []:
                 dep_job = self.jobs.get(dep.strip())
                 if not dep_job:
                     raise RuntimeError(f"Invalid dependency job id: {dep}")
+                if dep_job.id == job.id:
+                    raise CircularDependencyError(f"Circular reference detected ({inner_job.id} -> {dep_job.id})")
                 deps[job.id].append(dep_job)
                 gen_dependencies(dep_job)
 

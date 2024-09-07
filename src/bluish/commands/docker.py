@@ -219,7 +219,6 @@ def docker_exec(step: StepContext) -> ProcessResult:
 
     for opt in ["workdir"]:
         options += _build_opt(f"--{opt}", inputs.get(opt))
-
     output = ""
 
     echo_commands = step.get_inherited_attr("echo_commands", True)
