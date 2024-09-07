@@ -40,6 +40,15 @@ def fatal(message: str, exit_code: int = 1) -> Never:
 
 
 def init_logging(level_name: str) -> None:
+    for level in [
+        logging.INFO,
+        logging.DEBUG,
+        logging.WARNING,
+        logging.ERROR,
+        logging.CRITICAL,
+    ]:
+        logging.addLevelName(level, "")
+
     log_level = getattr(logging, level_name.upper(), logging.INFO)
     logging.basicConfig(level=log_level)
     logging.getLogger().handlers[0].setFormatter(

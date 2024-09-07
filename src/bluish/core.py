@@ -459,7 +459,9 @@ class WorkflowContext(ContextNode):
                 if not dep_job:
                     raise RuntimeError(f"Invalid dependency job id: {dep}")
                 if dep_job.id == job.id:
-                    raise CircularDependencyError(f"Circular reference detected ({inner_job.id} -> {dep_job.id})")
+                    raise CircularDependencyError(
+                        f"Circular reference detected ({inner_job.id} -> {dep_job.id})"
+                    )
                 deps[job.id].append(dep_job)
                 gen_dependencies(dep_job)
 
