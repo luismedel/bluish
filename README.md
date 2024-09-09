@@ -1,6 +1,6 @@
 # Bluish
 
-A CI/CD/automation tool that runs everywhere and has `make` ergonomics.
+A CI/CD automation tool that runs everywhere and has `make` ergonomics.
 
 ## Features
 
