@@ -39,10 +39,10 @@ jobs:
       - lint
     steps:
       - run: |
+          echo ""
           ruff version
           ruff check --select I --fix src/ test/
           ruff format src/
-          echo ""
 
   test:
     name: Run tests
