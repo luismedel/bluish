@@ -1,6 +1,6 @@
 # Bluish
 
-A CI/CD/automation tool that runs everywhere and have `make` ergonomics.
+A CI/CD/automation tool that runs everywhere and has `make` ergonomics.
 
 ## Features
 
@@ -15,7 +15,7 @@ Please, refer to the [project wiki](https://github.com/luismedel/bluish/wiki).
 
 ## How do Bluish workflows look?
 
-If you know other CI/CD tools, the following yaml will look more than familiar to you and you probably don't need an explanation.
+If you know other CI/CD tools, the following yaml will look more than familiar to you and you don't need any further explanation.
 
 ```yaml
 var:
