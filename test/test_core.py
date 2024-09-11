@@ -82,7 +82,7 @@ jobs:
 
 
 def test_init_cant_be_a_dependency() -> None:
-    wf = create_workflow(f"""
+    wf = create_workflow("""
     jobs:
         init:
             steps:
@@ -104,7 +104,7 @@ def test_init_cant_be_a_dependency() -> None:
 
 
 def test_cleanup_cant_be_a_dependency() -> None:
-    wf = create_workflow(f"""
+    wf = create_workflow("""
     jobs:
         cleanup:
             steps:
@@ -127,7 +127,7 @@ def test_cleanup_cant_be_a_dependency() -> None:
 
 def test_init_cant_have_dependecies() -> None:
     try:
-        _ = create_workflow(f"""
+        _ = create_workflow("""
     jobs:
         init:
             depends_on:
@@ -148,7 +148,7 @@ def test_init_cant_have_dependecies() -> None:
 
 def test_cleanup_cant_have_dependecies() -> None:
     try:
-        _ = create_workflow(f"""
+        _ = create_workflow("""
     jobs:
         cleanup:
             depends_on:
@@ -165,6 +165,33 @@ def test_cleanup_cant_have_dependecies() -> None:
         raise AssertionError("cleanup dependency not detected")
     except ValueError as ex:
         assert str(ex) == "Job cleanup cannot have dependencies"
+
+
+def test_matrix() -> None:
+    with tempfile.NamedTemporaryFile() as temp_file:
+        wf = create_workflow(f"""
+jobs:
+    test_job:
+        name: "Job 1"
+        matrix:
+            os: [ubuntu, macos]
+            version: ["18.04", "20.04"]
+            color: [red, blue]
+        steps:
+            - run: |
+                echo ${{{{ matrix.os }}}}-${{{{ matrix.version }}}}-${{{{ matrix.color }}}} >> {temp_file.name}
+""")
+        _ = wf.dispatch()
+        output = temp_file.read().decode()
+        assert output == """ubuntu-18.04-red
+ubuntu-18.04-blue
+ubuntu-20.04-red
+ubuntu-20.04-blue
+macos-18.04-red
+macos-18.04-blue
+macos-20.04-red
+macos-20.04-blue
+"""
 
 
 def test_depends_on() -> None:

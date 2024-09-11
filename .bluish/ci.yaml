@@ -1,6 +1,6 @@
 
 var:
-  PYTHON_VERSION: "3.11"
+  python_version: "3.11"
 
 jobs:
   lint:
@@ -11,7 +11,7 @@ jobs:
           ruff check src/ test/
           echo ""
           mypy --version
-          mypy --ignore-missing-imports --python-version=${{ var.PYTHON_VERSION }} src/ test/
+          mypy --ignore-missing-imports --python-version=${{ python_version }} src/ test/
 
   fix:
     name: Reformats the code using ruff

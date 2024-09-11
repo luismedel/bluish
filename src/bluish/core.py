@@ -3,6 +3,7 @@ import os
 import re
 from enum import Enum
 from functools import wraps
+from itertools import product
 from logging import debug, error, info, warning
 from typing import Any, Callable, Dict, Optional, TypeVar, Union, cast
 from uuid import uuid4
@@ -144,6 +145,13 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return try_get_value(step, varname, raw)
+    elif root == "matrix":
+        job = get_job(ctx)
+        if not job:
+            raise ValueError("Job reference not found")
+        if varname not in job.matrix:
+            raise ValueError(f"Matrix variable {varname} not found")
+        return prepare_value(job.matrix[varname])
     elif root == "step":
         step = get_step(ctx)
         if not step:
@@ -412,17 +420,25 @@ class WorkflowContext(ContextNode):
             **os.environ,
             **dotenv_values(".env"),
         }
-        
+
         def get_special_job(job_id: str) -> JobContext | None:
             if job_id not in self.SPECIAL_JOBS:
                 raise ValueError(f"Invalid special job id: {job_id}")
-            result = JobContext(self, job_id, self.attrs.jobs[job_id]) if job_id in self.attrs.jobs else None
+            result = (
+                JobContext(self, job_id, self.attrs.jobs[job_id])
+                if job_id in self.attrs.jobs
+                else None
+            )
             if result and result.attrs.depends_on:
                 raise ValueError(f"Job {job_id} cannot have dependencies")
             return result
 
-        self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items() if k not in self.SPECIAL_JOBS}
-        self.init_job = get_special_job("init") 
+        self.jobs = {
+            k: JobContext(self, k, v)
+            for k, v in self.attrs.jobs.items()
+            if k not in self.SPECIAL_JOBS
+        }
+        self.init_job = get_special_job("init")
         self.cleanup_job = get_special_job("cleanup")
         self.var = dict(self.attrs.var)
 
@@ -439,7 +455,9 @@ class WorkflowContext(ContextNode):
                     self.result = init_result
             else:
                 for job in self.jobs.values():
-                    result = self.dispatch_job(job, no_deps=False)
+                    result = self.dispatch_job(
+                        job, no_deps=False, run_init_cleanup=False
+                    )
                     if not result:
                         continue
 
@@ -473,8 +491,11 @@ class WorkflowContext(ContextNode):
         return self.cleanup_job.dispatch()
 
     def dispatch_job(
-        self, job: "JobContext", no_deps: bool
+        self, job: "JobContext", no_deps: bool, run_init_cleanup: bool = True
     ) -> process.ProcessResult | None:
+        if not run_init_cleanup:
+            return self.__dispatch_job(job, no_deps, set())
+
         try:
             init_result = self._dispatch_init_job()
             if init_result and init_result.failed:
@@ -492,7 +513,6 @@ class WorkflowContext(ContextNode):
                 error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
                 if not self.cleanup_job.attrs.continue_on_error:
                     return cleanup_result
-
 
     def __dispatch_job(
         self, job: "JobContext", no_deps: bool, visited_jobs: set[str]
@@ -523,7 +543,20 @@ class WorkflowContext(ContextNode):
                     error(f"Dependency {dependency_id} failed")
                     return result
 
-        return job.dispatch()
+        if job.attrs.matrix:
+            for matrix_tuple in product(*job.attrs.matrix.values()):
+                job.matrix = {
+                    key: value
+                    for key, value in zip(job.attrs.matrix.keys(), matrix_tuple)
+                }
+                result = job.dispatch()
+                job.matrix = {}
+                if result and result.failed:
+                    return result
+
+            return process.ProcessResult()
+        else:
+            return job.dispatch()
 
 
 class JobContext(ContextNode):
@@ -539,6 +572,8 @@ class JobContext(ContextNode):
 
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("continue_on_error", False)
+
+        self.matrix: dict[str, Any] = {}
 
         self.env = {
             **parent.env,
@@ -570,6 +605,11 @@ class JobContext(ContextNode):
         self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
 
         try:
+            if self.matrix:
+                info("matrix:")
+                for k, v in self.matrix.items():
+                    info(f"  {k}: {v}")
+
             if not can_dispatch(self):
                 self.status = ExecutionStatus.SKIPPED
                 info("Job skipped")
