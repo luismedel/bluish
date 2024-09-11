@@ -396,6 +396,8 @@ class ContextNode:
 
 
 class WorkflowContext(ContextNode):
+    SPECIAL_JOBS = ("init", "cleanup")
+
     def __init__(self, definition: dict[str, Any]) -> None:
         super().__init__(None, definition)
 
@@ -410,29 +412,33 @@ class WorkflowContext(ContextNode):
             **os.environ,
             **dotenv_values(".env"),
         }
+        
+        def get_special_job(job_id: str) -> JobContext | None:
+            if job_id not in self.SPECIAL_JOBS:
+                raise ValueError(f"Invalid special job id: {job_id}")
+            result = JobContext(self, job_id, self.attrs.jobs[job_id]) if job_id in self.attrs.jobs else None
+            if result and result.attrs.depends_on:
+                raise ValueError(f"Job {job_id} cannot have dependencies")
+            return result
 
-        self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
+        self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items() if k not in self.SPECIAL_JOBS}
+        self.init_job = get_special_job("init") 
+        self.cleanup_job = get_special_job("cleanup")
         self.var = dict(self.attrs.var)
 
     def dispatch(self) -> process.ProcessResult:
         self.status = ExecutionStatus.RUNNING
 
         try:
-            initialized = True
-
             init_result = self._dispatch_init_job()
             if init_result and init_result.failed:
+                assert self.init_job is not None
                 error(f"Init job failed with exit code {init_result.returncode}")
-                if not self.jobs["init"].attrs.continue_on_error:
+                if not self.init_job.attrs.continue_on_error:
                     self.failed = True
                     self.result = init_result
-                    initialized = False
-
-            if initialized:
+            else:
                 for job in self.jobs.values():
-                    if job.id in ("init", "cleanup"):
-                        continue
-
                     result = self.dispatch_job(job, no_deps=False)
                     if not result:
                         continue
@@ -441,34 +447,52 @@ class WorkflowContext(ContextNode):
                     if result.failed and not job.attrs.continue_on_error:
                         self.failed = True
                         break
+
+            return self.result
+
         finally:
             self.status = ExecutionStatus.FINISHED
 
             cleanup_result = self._dispatch_cleanup_job()
             if cleanup_result and cleanup_result.failed:
+                assert self.cleanup_job is not None
                 error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
-                if not self.jobs["cleanup"].attrs.continue_on_error:
+                if not self.cleanup_job.attrs.continue_on_error:
                     self.failed = True
                     self.result = cleanup_result
-
-        return self.result
+                    return self.result
 
     def _dispatch_init_job(self) -> process.ProcessResult | None:
-        init_job = self.jobs.get("init")
-        if not init_job:
+        if not self.init_job:
             return None
-        return init_job.dispatch()
+        return self.init_job.dispatch()
 
     def _dispatch_cleanup_job(self) -> process.ProcessResult | None:
-        cleanup_job = self.jobs.get("cleanup")
-        if not cleanup_job:
+        if not self.cleanup_job:
             return None
-        return cleanup_job.dispatch()
+        return self.cleanup_job.dispatch()
 
     def dispatch_job(
         self, job: "JobContext", no_deps: bool
     ) -> process.ProcessResult | None:
-        return self.__dispatch_job(job, no_deps, set())
+        try:
+            init_result = self._dispatch_init_job()
+            if init_result and init_result.failed:
+                assert self.init_job is not None
+                error(f"Init job failed with exit code {init_result.returncode}")
+                if not self.init_job.attrs.continue_on_error:
+                    return init_result
+
+            return self.__dispatch_job(job, no_deps, set())
+
+        finally:
+            cleanup_result = self._dispatch_cleanup_job()
+            if cleanup_result and cleanup_result.failed:
+                assert self.cleanup_job is not None
+                error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
+                if not self.cleanup_job.attrs.continue_on_error:
+                    return cleanup_result
+
 
     def __dispatch_job(
         self, job: "JobContext", no_deps: bool, visited_jobs: set[str]
@@ -487,6 +511,9 @@ class WorkflowContext(ContextNode):
         if not no_deps:
             debug("Getting dependency map...")
             for dependency_id in job.attrs.depends_on or []:
+                if dependency_id in self.SPECIAL_JOBS:
+                    raise ValueError(f"Invalid dependency job id: {dependency_id}")
+
                 dep_job = self.jobs.get(dependency_id)
                 if not dep_job:
                     raise RuntimeError(f"Invalid dependency job id: {dependency_id}")
