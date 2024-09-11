@@ -104,7 +104,7 @@ def capture_subprocess_output(
         line = process.stdout.readline()
         stdout += line
         if stdout_handler:
-            stdout_handler(line)
+            stdout_handler(line.rstrip())
 
     return_code = process.wait()
     stdout = stdout
