@@ -10,7 +10,7 @@ jobs:
     runs_on: docker://python:3.12-alpine
 
     steps:
-      - uses: system/install-packages
+      - uses: linux/install-packages
         with:
           packages:
             - jq
