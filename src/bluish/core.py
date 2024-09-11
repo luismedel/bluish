@@ -40,21 +40,6 @@ class CircularDependencyError(Exception):
     pass
 
 
-def set_obj_attr(obj: Any, name: str, value: Any) -> None:
-    if isinstance(obj, dict):
-        obj[name] = value
-    else:
-        setattr(obj, name, value)
-
-
-def get_obj_attr(obj: Any, name: str) -> tuple[bool, Any]:
-    if isinstance(obj, dict) and name in obj:
-        return (True, obj[name])
-    elif hasattr(obj, name):
-        return (True, getattr(obj, name))
-    return (False, None)
-
-
 def get_step(ctx: "ContextNode") -> Optional["StepContext"]:
     if isinstance(ctx, StepContext):
         return ctx
@@ -95,7 +80,18 @@ def try_get_value(ctx: "ContextNode", name: str, raw: bool = False) -> tuple[boo
             return (True, value if raw else ctx.expand_expr(value))
 
     if "." not in name:
-        name = f".{name}"
+        # Handle a non-fully qualified variable name and avoid ambiguity
+        member_found, member_value = try_get_value(ctx, f".{name}", raw=True)
+        var_found, var_value = try_get_value(ctx, f"var.{name}", raw=True)
+
+        if var_found and member_found:
+            raise ValueError(f"Ambiguous value reference: {name}")
+        elif var_found:
+            return prepare_value(var_value)
+        elif member_found:
+            return prepare_value(member_value)
+        else:
+            return (False, "")
 
     root, varname = name.split(".", maxsplit=1)
 

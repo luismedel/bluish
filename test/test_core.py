@@ -96,9 +96,9 @@ jobs:
 """)
     try:
         _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
-        assert False
+        raise AssertionError("Circular dependency not detected")
     except CircularDependencyError:
-        assert True
+        pass
 
 
 def test_depends_on_failed() -> None:
@@ -300,9 +300,9 @@ jobs:
 """)
     try:
         _, result = wf.try_dispatch()
-        assert False
+        raise AssertionError("Mandatory attribute not detected")
     except RequiredAttributeError:
-        assert True
+        pass
 
 
 def test_mandatory_inputs() -> None:
@@ -319,9 +319,9 @@ jobs:
 """)
     try:
         _, result = wf.try_dispatch()
-        assert False
+        raise AssertionError("Mandatory input not detected")
     except RequiredInputError:
-        assert True
+        pass
 
 
 def test_cwd() -> None:
@@ -354,6 +354,46 @@ jobs:
     _, result = wf.try_dispatch()
 
     assert wf.jobs["expansion"].result.stdout == "Hello World! :-)"
+
+
+def test_expansion_with_ambiguity() -> None:
+    wf = create_workflow("""
+var:
+    test_result:
+    result: "No"
+
+jobs:
+    expansion:
+        name: Test expansion
+        steps:
+            - run: echo 'Yes!'
+              set:
+                workflow.var.test_result: ${{ result }}
+""")
+    try:
+        _, result = wf.try_dispatch()
+        raise AssertionError("Ambiguity not detected")
+    except ValueError as ex:
+        assert str(ex) == "Ambiguous value reference: result"
+
+
+def test_expansion_with_no_ambiguity() -> None:
+    wf = create_workflow("""
+var:
+    test_result:
+    result: "No"
+
+jobs:
+    expansion:
+        name: Test expansion
+        steps:
+            - run: echo 'Yes!'
+              set:
+                workflow.var.test_result: ${{ .result }}
+""")
+    _, result = wf.try_dispatch()
+    wf.get_value("test_result") == "Yes!"
+    wf.get_value("var.test_result") == "Yes!"
 
 
 def test_working_dir_expansion() -> None:
