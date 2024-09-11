@@ -638,12 +638,12 @@ class JobContext(ContextNode):
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
-            line = line.strip()
+            line = line.rstrip()
             if line:
                 info(line)
 
         def stderr_handler(line: str) -> None:
-            line = line.strip()
+            line = line.rstrip()
             if line:
                 info(line)
 
