@@ -243,7 +243,7 @@ def docker_exec(step: StepContext) -> ProcessResult:
 
         if result.failed:
             if echo_output:
-                error(decorate_for_log(result.error))
+                error(decorate_for_log(result.error, "* "))
             return ProcessResult(
                 returncode=result.returncode, stdout=output, stderr=result.stderr
             )

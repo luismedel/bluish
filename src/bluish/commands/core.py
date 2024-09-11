@@ -3,6 +3,7 @@ from logging import error, info
 
 from bluish.core import StepContext, action, read_file, write_file
 from bluish.process import ProcessResult
+from bluish.utils import decorate_for_log
 
 
 @action("core/default-action", required_attrs=["run|set"])
@@ -25,7 +26,7 @@ def generic_run(step: StepContext) -> ProcessResult:
     command = step.expand_expr(command)
 
     if echo_commands:
-        info(command)
+        info(decorate_for_log(command, "> "))
 
     return step.job.exec(command, step, stream_output=echo_output)
 
