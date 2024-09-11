@@ -145,12 +145,13 @@ def run(
         docker_pid = host[9:]
         command = f"docker exec -i {docker_pid} sh -euc '{command}'"
 
-    result = capture_subprocess_output(command, stdout_handler)
+    cmd_result = capture_subprocess_output(command, stdout_handler)
 
-    if result.stderr and stderr_handler:
-        stderr_handler(result.stderr)
+    result = ProcessResult.from_subprocess_result(cmd_result)
+    if result.failed and result.stderr and stderr_handler:
+        stderr_handler(cmd_result.stderr)
 
-    return ProcessResult.from_subprocess_result(result)
+    return result
 
 
 def get_flavor(host: str | None) -> str:

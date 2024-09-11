@@ -116,8 +116,13 @@ def blu_cli(
 
     try:
         run, result = wf.try_dispatch_job(job, no_deps)
-        if run and result and result.failed:
+        if not run or not result:
+            return
+        if result.failed:
             exit(result.returncode)
+        else:
+            click.secho("Job completed successfully.", fg="green")
+            
     except Exception as e:
         fatal(str(e))
 
@@ -193,8 +198,12 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
 
     try:
         run, result = wf.try_dispatch_job(job, no_deps)
-        if run and result and result.failed:
+        if not run or not result:
+            return
+        if result.failed:
             exit(result.returncode)
+        else:
+            click.secho("Job completed successfully.", fg="green")
     except Exception as e:
         fatal(str(e))
 
