@@ -443,58 +443,35 @@ class WorkflowContext(ContextNode):
     def try_dispatch_job(
         self, job: "JobContext", no_deps: bool
     ) -> tuple[bool, process.ProcessResult | None]:
-        deps: dict[str, list[JobContext]] = {}
+        return self._try_dispatch_job(job, no_deps, set())
 
-        def gen_dependencies(inner_job: JobContext) -> None:
-            if inner_job.id in deps:
-                return
+    def _try_dispatch_job(
+        self, job: "JobContext", no_deps: bool, visited_jobs: set[str]
+    ) -> tuple[bool, process.ProcessResult | None]:
+        if job.id in visited_jobs:
+            raise CircularDependencyError("Circular reference detected")
 
-            deps[inner_job.id] = []
-            for dep in inner_job.attrs.depends_on or []:
-                dep_job = self.jobs.get(dep.strip())
-                if not dep_job:
-                    raise RuntimeError(f"Invalid dependency job id: {dep}")
-                if dep_job.id == job.id:
-                    raise CircularDependencyError(
-                        f"Circular reference detected ({inner_job.id} -> {dep_job.id})"
-                    )
-                deps[job.id].append(dep_job)
-                gen_dependencies(dep_job)
+        if job.status == ExecutionStatus.FINISHED:
+            info(f"Job {job.id} already dispatched and finished")
+            return (True, job.result)
+        elif job.status == ExecutionStatus.SKIPPED:
+            info(f"Re-running skipped job {job.id}")
 
-        def _dispatch(job: JobContext) -> tuple[bool, process.ProcessResult | None]:
-            if job.status == ExecutionStatus.FINISHED:
-                info(f"Job {job.id} already dispatched and finished")
-                return (True, job.result)
-            elif job.status == ExecutionStatus.SKIPPED:
-                info(f"Re-running skipped job {job.id}")
-
-            debug("Getting dependency map")
-            dependencies = deps.get(job.id)
-            if dependencies:
-                debug(
-                    f"Dependencies for {job.id}: {', '.join(d.id for d in dependencies)}"
-                )
-                for dependency in dependencies:
-                    run, result = _dispatch(dependency)
-                    if run and result and result.failed:
-                        error(f"Dependency {dependency.id} failed")
-                        return (True, result)
-
-            run, result = job.try_dispatch()
-            if not run:
-                return (False, None)
-            assert result is not None
-
-            if result.failed:
-                error(f"Job {job.id} failed:\n{result.error}")
-
-            return (True, result)
+        visited_jobs.add(job.id)
 
         if not no_deps:
-            debug("Generating dependencies...")
-            gen_dependencies(job)
+            debug("Getting dependency map...")
+            for dependency_id in job.attrs.depends_on or []:
+                dep_job = self.jobs.get(dependency_id)
+                if not dep_job:
+                    raise RuntimeError(f"Invalid dependency job id: {dependency_id}")
 
-        return _dispatch(job)
+                run, result = self._try_dispatch_job(dep_job, no_deps, visited_jobs)
+                if run and result and result.failed:
+                    error(f"Dependency {dependency_id} failed")
+                    return (True, result)
+
+        return job.try_dispatch()
 
 
 class JobContext(ContextNode):

@@ -27,6 +27,7 @@ jobs:
     assert wf.jobs["checkout"].result.stdout == "# Bluish"
 
 
+@pytest.mark.docker
 def test_docker_checkout_alpine() -> None:
     wf = create_workflow("""
 jobs:
