@@ -23,7 +23,7 @@ jobs:
             - moreutils
             - jq
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     assert wf.jobs["test_job"].result.failed is False
 
 
@@ -40,7 +40,7 @@ jobs:
             - moreutils
             - jq
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     assert wf.jobs["test_job"].result.failed is False
 
 
@@ -56,5 +56,5 @@ jobs:
           packages:
               - thispackagedoesnotexist-1.0.0
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     assert wf.jobs["test_job"].result.failed

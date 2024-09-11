@@ -99,8 +99,8 @@ def capture_subprocess_output(
 
     stdout: str = ""
     stderr: str = ""
-    
-    def process_line(line:str) -> None:
+
+    def process_line(line: str) -> None:
         nonlocal stdout
         stdout += line
         if stdout_handler:

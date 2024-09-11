@@ -23,7 +23,7 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     assert wf.jobs["checkout"].result.stdout == "# Bluish"
 
 
@@ -40,5 +40,5 @@ jobs:
       - run: |
           head -n1 README.md
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     assert wf.jobs["checkout"].result.stdout == "# Bluish"

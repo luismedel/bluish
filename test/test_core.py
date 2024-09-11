@@ -31,7 +31,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["job1"].result.stdout == "This is Job 1"
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
@@ -51,7 +51,7 @@ jobs:
         steps:
             - run: echo 'This is Job 2, step 1'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["job1"].result.stdout == "This is Job 1"
     assert wf.jobs["job2"].result.stdout == ""
@@ -72,7 +72,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
+    _ = wf.dispatch_job(wf.jobs["job2"], False)
     assert wf.jobs["job1"].result.stdout == "This is Job 1"
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
 
@@ -95,7 +95,7 @@ jobs:
             - run: echo 'This is Job 2, step 2'
 """)
     try:
-        _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
+        _ = wf.dispatch_job(wf.jobs["job2"], False)
         raise AssertionError("Circular dependency not detected")
     except CircularDependencyError:
         pass
@@ -118,7 +118,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    _, result = wf.try_dispatch_job(wf.jobs["job2"], False)
+    _ = wf.dispatch_job(wf.jobs["job2"], False)
     assert wf.jobs["job1"].status == ExecutionStatus.FINISHED
     assert wf.jobs["job1"].result.failed
     assert wf.jobs["job2"].status == ExecutionStatus.PENDING
@@ -140,7 +140,7 @@ jobs:
             - run: echo 'This is Job 2, step 1'
             - run: echo 'This is Job 2, step 2'
 """)
-    _, result = wf.try_dispatch_job(wf.jobs["job2"], True)
+    _ = wf.dispatch_job(wf.jobs["job2"], True)
     assert wf.jobs["job1"].result.stdout == ""
     assert wf.jobs["job2"].result.stdout == "This is Job 2, step 2"
 
@@ -186,7 +186,7 @@ jobs:
               run: |
                 print("This will not be printed")
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["job1"].result.stdout == ""
     assert wf.jobs["job2"].result.stdout == "This is Job 2"
@@ -206,7 +206,7 @@ jobs:
         steps:
             - run: pwd
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["test_job"].result.stdout == "/tmp"
 
@@ -223,7 +223,7 @@ jobs:
         steps:
             - run: pwd
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["test_job"].result.stdout == "/home"
 
@@ -236,7 +236,7 @@ jobs:
         steps:
             - run: echo 'Hello, World!'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["hello_run"].result.stdout == "Hello, World!"
 
@@ -250,7 +250,7 @@ jobs:
         steps:
             - run: echo 'Hello, World!'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["hello_sh"].result.stdout == "Hello, World!"
 
@@ -266,7 +266,7 @@ jobs:
                 v = "World"
                 print(f'Hello, {v}!')
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["hello_python"].result.stdout == "Hello, World!"
 
@@ -286,7 +286,7 @@ jobs:
                 v = "World"
                 print(f'Hello, {v}!')
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["hello_python"].result.stdout == "Hello, World!"
 
@@ -299,7 +299,7 @@ jobs:
             - name: 'This step lacks a run property'
 """)
     try:
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
         raise AssertionError("Mandatory attribute not detected")
     except RequiredAttributeError:
         pass
@@ -318,7 +318,7 @@ jobs:
                 input: "Hello, ${{{{ var.WORLD }}}}"
 """)
     try:
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
         raise AssertionError("Mandatory input not detected")
     except RequiredInputError:
         pass
@@ -333,7 +333,7 @@ jobs:
         steps:
             - run: pwd
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["cwd"].result.stdout == "/tmp"
 
@@ -351,7 +351,7 @@ jobs:
         steps:
             - run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["expansion"].result.stdout == "Hello World! :-)"
 
@@ -371,7 +371,7 @@ jobs:
                 workflow.var.test_result: ${{ result }}
 """)
     try:
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
         raise AssertionError("Ambiguity not detected")
     except ValueError as ex:
         assert str(ex) == "Ambiguous value reference: result"
@@ -391,7 +391,7 @@ jobs:
               set:
                 workflow.var.test_result: ${{ .result }}
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
     wf.get_value("test_result") == "Yes!"
     wf.get_value("var.test_result") == "Yes!"
 
@@ -409,7 +409,7 @@ jobs:
         steps:
             - run: echo '${{ var.DIRECTORY }}'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["test_job"].result.stdout == "/tmp"
 
@@ -429,7 +429,7 @@ jobs:
                 jobs.test_job.var.VALUE: 99  # Will be overridden by the next line
                 job.var.VALUE: 2
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.get_value("var.VALUE") == 1
     assert wf.get_value("workflow.var.VALUE") == 1
@@ -458,7 +458,7 @@ jobs:
                   job.var.COOL_YEAR: 1980
                   jobs.test_job.var.VOUTPUT: ${{ .result }}
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.get_value("var.VALUE") == 2
     assert wf.get_value("jobs.test_job.var.COOL_YEAR") == 1980
@@ -492,7 +492,7 @@ jobs:
             - id: step-1
               run: echo '${{ var.HELLO }} ${{ var.WORLD }} ${{ var.SMILEY }}'
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["test_job"].steps["step-1"].result.stdout == "Hello World! :-DDDD"
     assert wf.jobs["test_job"].steps["step-2"].result.stdout == "Hello World! xD"
@@ -532,7 +532,7 @@ jobs:
                       Hello, ${{{{ var.WORLD }}}}
                   output_file: {temp_file.name}
     """)
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
 
         assert wf.jobs["expand_template"].result.stdout.endswith("Hello, World!\n")
         assert run(f"tail -n1 {temp_file.name}").stdout == "Hello, World!"
@@ -552,7 +552,7 @@ jobs:
               set:
                   workflow.var.OUT: ${{ outputs.OUT }}
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.get_value("jobs.test_job.steps.step_1.outputs.OUT") == "value 1"
     assert wf.get_value("jobs.test_job.steps.step_2.outputs.OUT") == "value 2"
@@ -570,7 +570,7 @@ jobs:
             - run: |
                   echo "Hello, $WORLD"
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["pass_env"].result.stdout == "Hello, World!"
 
@@ -588,7 +588,7 @@ jobs:
             - run: |
                   echo "Hello, $WORLD"
 """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["pass_env"].result.stdout == "Hello, World!"
 
@@ -603,7 +603,7 @@ jobs:
             - run: |
                   echo 'Hello, World!'
     """)
-    _, result = wf.try_dispatch()
+    _ = wf.dispatch()
 
     assert wf.jobs["docker_run"].result.stdout == "Hello, World!"
 
@@ -624,7 +624,7 @@ jobs:
                   destination_file: /tmp/hello.txt
             - run: cat /tmp/hello.txt
     """)
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
     assert wf.jobs["file_upload"].result.stdout == "Hello, World!"
 
 
@@ -646,7 +646,7 @@ jobs:
                   source_file: /tmp/hello.txt
                   destination_file: {temp_file.name}
     """)
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
 
         with open(temp_file.name, "r") as f:
             assert f.read().strip() == "Hello, World!"
@@ -670,7 +670,7 @@ jobs:
             - run: |
                   echo 'Hello, World!'
     """)
-        _, result = wf.try_dispatch()
+        _ = wf.dispatch()
 
         assert wf.jobs["test_job"].failed
         assert wf.jobs["test_job"].steps["step_1"].failed

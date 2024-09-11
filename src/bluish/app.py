@@ -115,14 +115,14 @@ def blu_cli(
         fatal(f"Job '{job_id}' not found.")
 
     try:
-        run, result = wf.try_dispatch_job(job, no_deps)
-        if not run or not result:
+        result = wf.dispatch_job(job, no_deps)
+        if not result:
             return
         if result.failed:
             exit(result.returncode)
         else:
             click.secho("Job completed successfully.", fg="green")
-            
+
     except Exception as e:
         fatal(str(e))
 
@@ -197,10 +197,10 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
         fatal(f"Job '{job_id}' not found.")
 
     try:
-        run, result = wf.try_dispatch_job(job, no_deps)
-        if not run or not result:
+        result = wf.dispatch_job(job, no_deps)
+        if not result:
             return
-        if result.failed:
+        elif result.failed:
             exit(result.returncode)
         else:
             click.secho("Job completed successfully.", fg="green")
@@ -242,11 +242,11 @@ def serve(workflow_path: str, host: str, port: int) -> None:
             stream=log_stream, level=log_level, format="%(message)s", force=True
         )
 
-        run, result = wf.try_dispatch_job(job, False)
+        result = wf.dispatch_job(job, False)
 
         return jsonify(
             {
-                "run": run,
+                "run": result is not None,
                 "stdout": log_stream.getvalue().splitlines(),
                 "stderr": result.stderr if result else None,
                 "returncode": result.returncode if result else None,

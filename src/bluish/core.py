@@ -375,29 +375,23 @@ class ContextNode:
         if not try_set_value(self, name, value):
             raise ValueError(f"Invalid variable name: {name}")
 
-    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+    def dispatch(self) -> process.ProcessResult | None:
         raise NotImplementedError()
 
     def set_attr(self, name: str, value: Any) -> None:
         setattr(self.attrs, name, value)
-
-    def try_get_attr(self, name: str) -> tuple[bool, Any]:
-        if hasattr(self, name):
-            return (True, getattr(self, name))
-        elif name in self.attrs:
-            return (True, getattr(self.attrs, name))
-        else:
-            return (False, None)
 
     def get_inherited_attr(
         self, name: str, default: TResult | None = None
     ) -> TResult | None:
         ctx: ContextNode | None = self
         while ctx is not None:
-            found, v = ctx.try_get_attr(name)
-            if found:
-                return cast(TResult, v)
-            ctx = ctx.parent
+            if hasattr(ctx, name):
+                return cast(TResult, getattr(ctx, name))
+            elif name in ctx.attrs:
+                return cast(TResult, getattr(ctx.attrs, name))
+            else:
+                ctx = ctx.parent
         return default
 
 
@@ -420,40 +414,71 @@ class WorkflowContext(ContextNode):
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
         self.var = dict(self.attrs.var)
 
-    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+    def dispatch(self) -> process.ProcessResult:
         self.status = ExecutionStatus.RUNNING
 
         try:
-            for job in self.jobs.values():
-                run, result = self.try_dispatch_job(job, no_deps=False)
-                if not run:
-                    continue
-                assert result is not None
+            initialized = True
 
-                self.result = result
-
-                if result.failed and not job.attrs.continue_on_error:
+            init_result = self._dispatch_init_job()
+            if init_result and init_result.failed:
+                error(f"Init job failed with exit code {init_result.returncode}")
+                if not self.jobs["init"].attrs.continue_on_error:
                     self.failed = True
-                    break
+                    self.result = init_result
+                    initialized = False
+
+            if initialized:
+                for job in self.jobs.values():
+                    if job.id in ("init", "cleanup"):
+                        continue
+
+                    result = self.dispatch_job(job, no_deps=False)
+                    if not result:
+                        continue
+
+                    self.result = result
+                    if result.failed and not job.attrs.continue_on_error:
+                        self.failed = True
+                        break
         finally:
             self.status = ExecutionStatus.FINISHED
 
-        return (True, self.result)
+            cleanup_result = self._dispatch_cleanup_job()
+            if cleanup_result and cleanup_result.failed:
+                error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
+                if not self.jobs["cleanup"].attrs.continue_on_error:
+                    self.failed = True
+                    self.result = cleanup_result
 
-    def try_dispatch_job(
+        return self.result
+
+    def _dispatch_init_job(self) -> process.ProcessResult | None:
+        init_job = self.jobs.get("init")
+        if not init_job:
+            return None
+        return init_job.dispatch()
+
+    def _dispatch_cleanup_job(self) -> process.ProcessResult | None:
+        cleanup_job = self.jobs.get("cleanup")
+        if not cleanup_job:
+            return None
+        return cleanup_job.dispatch()
+
+    def dispatch_job(
         self, job: "JobContext", no_deps: bool
-    ) -> tuple[bool, process.ProcessResult | None]:
-        return self._try_dispatch_job(job, no_deps, set())
+    ) -> process.ProcessResult | None:
+        return self.__dispatch_job(job, no_deps, set())
 
-    def _try_dispatch_job(
+    def __dispatch_job(
         self, job: "JobContext", no_deps: bool, visited_jobs: set[str]
-    ) -> tuple[bool, process.ProcessResult | None]:
+    ) -> process.ProcessResult | None:
         if job.id in visited_jobs:
             raise CircularDependencyError("Circular reference detected")
 
         if job.status == ExecutionStatus.FINISHED:
             info(f"Job {job.id} already dispatched and finished")
-            return (True, job.result)
+            return job.result
         elif job.status == ExecutionStatus.SKIPPED:
             info(f"Re-running skipped job {job.id}")
 
@@ -466,12 +491,12 @@ class WorkflowContext(ContextNode):
                 if not dep_job:
                     raise RuntimeError(f"Invalid dependency job id: {dependency_id}")
 
-                run, result = self._try_dispatch_job(dep_job, no_deps, visited_jobs)
-                if run and result and result.failed:
+                result = self.__dispatch_job(dep_job, no_deps, visited_jobs)
+                if result and result.failed:
                     error(f"Dependency {dependency_id} failed")
-                    return (True, result)
+                    return result
 
-        return job.try_dispatch()
+        return job.dispatch()
 
 
 class JobContext(ContextNode):
@@ -508,7 +533,7 @@ class JobContext(ContextNode):
                 step.id = step_id
             self.steps[step_id] = step
 
-    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+    def dispatch(self) -> process.ProcessResult | None:
         self.status = ExecutionStatus.RUNNING
 
         name = self.attrs.name or self.id
@@ -521,14 +546,12 @@ class JobContext(ContextNode):
             if not can_dispatch(self):
                 self.status = ExecutionStatus.SKIPPED
                 info("Job skipped")
-                return (False, None)
+                return None
 
             for step in self.steps.values():
-                run, result = step.try_dispatch()
-                if not run:
+                result = step.dispatch()
+                if not result:
                     continue
-
-                assert result is not None
 
                 self.result = result
 
@@ -541,7 +564,7 @@ class JobContext(ContextNode):
                 self.status = ExecutionStatus.FINISHED
             process.cleanup_host(self.runs_on_host)
 
-        return (True, self.result)
+        return self.result
 
     def exec(
         self,
@@ -658,7 +681,7 @@ class StepContext(ContextNode):
         self.inputs = dict(self.attrs._with or {})
         self.outputs = dict(self.attrs.outputs or {})
 
-    def try_dispatch(self) -> tuple[bool, process.ProcessResult | None]:
+    def dispatch(self) -> process.ProcessResult | None:
         if self.attrs.name:
             info(f"* {self.attrs.name} ({self.id})")
         else:
@@ -667,7 +690,7 @@ class StepContext(ContextNode):
         if not can_dispatch(self):
             self.status = ExecutionStatus.SKIPPED
             info("Step skipped")
-            return (False, None)
+            return None
 
         self.status = ExecutionStatus.RUNNING
 
@@ -691,7 +714,7 @@ class StepContext(ContextNode):
         finally:
             self.status = ExecutionStatus.FINISHED
 
-        return (True, self.result)
+        return self.result
 
 
 class RequiredInputError(Exception):
