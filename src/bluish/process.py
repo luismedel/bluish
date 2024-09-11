@@ -99,15 +99,19 @@ def capture_subprocess_output(
 
     stdout: str = ""
     stderr: str = ""
-
-    while True:
-        lines = process.stdout.readlines()
-        stdout += "\n".join(lines)
+    
+    def process_line(line:str) -> None:
+        nonlocal stdout
+        stdout += line
         if stdout_handler:
-            for line in lines:
-                stdout_handler(line.rstrip())
-        if process.poll() is not None:
-            break
+            stdout_handler(line.rstrip())
+
+    while process.poll() is None:
+        process_line(process.stdout.readline())
+
+    # Process the remaining lines
+    for line in process.stdout.readlines():
+        process_line(line)
 
     return_code = process.wait()
     stdout = stdout.rstrip()
