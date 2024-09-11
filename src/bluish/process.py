@@ -107,8 +107,8 @@ def capture_subprocess_output(
             stdout_handler(line)
 
     return_code = process.wait()
-    stdout = stdout.strip()
-    stderr = process.stderr.read().strip()
+    stdout = stdout
+    stderr = process.stderr.read()
 
     return subprocess.CompletedProcess(command, return_code, stdout, stderr)
 
