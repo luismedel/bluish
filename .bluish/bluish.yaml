@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.0.30"
+  project_version: "0.0.31"
 
 jobs:
   publish:
@@ -62,3 +62,42 @@ jobs:
         run: |
           python -m pip install --upgrade twine
           python -m twine upload dist/*
+
+  create-docker:
+    matrix:
+      flavor: ["alpine", "ubuntu"]
+
+    steps:
+      - name: "Build Alpine Dockerfile"
+        uses: core/expand-template
+        if: |
+          [ "${{ matrix.flavor }}" == "alpine" ]
+        with:
+          input: |
+            FROM ${{ matrix.flavor }}:latest
+            RUN apk add --no-cache python3 py-pip
+            RUN pip3 install bluish==${{ project_version }} --break-system-packages
+          output_file: ./Dockerfile-${{ matrix.flavor }}
+
+      - name: "Build Ubuntu Dockerfile"
+        uses: core/expand-template
+        if: |
+          [ "${{ matrix.flavor }}" == "ubuntu" ]
+        with:
+          input: |
+            FROM ${{ matrix.flavor }}:latest
+            RUN apt-get update -qq && apt-get install -qqy python3 python3-pip
+            RUN pip3 install bluish==${{ project_version }} --break-system-packages
+          output_file: ./Dockerfile-${{ matrix.flavor }}
+
+      - uses: docker/build
+        with:
+          dockerfile: ./Dockerfile-${{ matrix.flavor }}
+          context: .
+          tags:
+            - "bluish-${{ matrix.flavor }}:${{ project_version }}"
+            - "bluish-${{ matrix.flavor }}:latest"
+
+      - run: |
+          docker image push -a bluish-${{ matrix.flavor }}
+          rm ./Dockerfile-${{ matrix.flavor }}

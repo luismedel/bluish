@@ -48,10 +48,14 @@ def docker_build(step: StepContext) -> ProcessResult:
 
     options = f"-f '{dockerfile}'"
     options += _build_list_opt("-t", inputs.get("tags"))
-
+    
     working_dir = step.get_inherited_attr("working_directory", ".")
     context = inputs.get("context", working_dir)
-    build_result = step.job.exec(f"docker build {options} {context}", step)
+    command = step.expand_expr(f"docker build {options} {context}")
+    if step.get_inherited_attr("echo_commands", True):
+        info(f"Building image:\n -> {command}")
+
+    build_result = step.job.exec(command, step, stream_output=True)
     if build_result.failed:
         error(f"Failed to build image: {build_result.error}")
     return build_result

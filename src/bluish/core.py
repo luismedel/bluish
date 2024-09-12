@@ -188,7 +188,7 @@ def try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     if "." not in name:
         return False
 
-    root, varname = name.split(".", maxsplit=1)
+    root, varname = ctx.expand_expr(name).split(".", maxsplit=1)
     if root == "":
         root, varname = varname.split(".", maxsplit=1)
 
@@ -330,7 +330,7 @@ class ContextNode:
         self.id: str = self.attrs.id
         self.env = dict(self.attrs.env)
         self.var = dict(self.attrs.var)
-        self.outputs = dict(self.attrs.outputs or {})
+        self.outputs = {}
         self.result = process.ProcessResult()
         self.failed = False
         self.status: ExecutionStatus = ExecutionStatus.PENDING
@@ -342,7 +342,12 @@ class ContextNode:
             return ""
 
         if not isinstance(value, str):
-            return value
+            if isinstance(value, dict):
+                return {self.expand_expr(k, _depth=_depth): self.expand_expr(v, _depth=_depth) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [self.expand_expr(v, _depth=_depth) for v in value]
+            else:
+                return value
 
         if "$" not in value:
             return value
@@ -546,7 +551,7 @@ class WorkflowContext(ContextNode):
         if job.attrs.matrix:
             for matrix_tuple in product(*job.attrs.matrix.values()):
                 job.matrix = {
-                    key: value
+                    key: self.expand_expr(value)
                     for key, value in zip(job.attrs.matrix.keys(), matrix_tuple)
                 }
                 result = job.dispatch()
@@ -717,7 +722,7 @@ class JobContext(ContextNode):
             stderr_handler=stderr_handler if stream_output else None,
         )
 
-        # HACK: We should use process.read_file here,
+        # HACK: We should use our own process.read_file here,
         # but it currently causes an infinite recursion
         output_result = process.run(f"cat {capture_filename}", host)
         if output_result.failed:
@@ -745,8 +750,8 @@ class StepContext(ContextNode):
 
         self.id = self.attrs.id
 
-        self.inputs = dict(self.attrs._with or {})
-        self.outputs = dict(self.attrs.outputs or {})
+        self.inputs = {}
+        self.outputs = {}
 
     def dispatch(self) -> process.ProcessResult | None:
         if self.attrs.name:
@@ -768,9 +773,9 @@ class StepContext(ContextNode):
                 raise ValueError(f"Unknown action: {fqn}")
 
             info(f"Run {fqn}")
-            if self.inputs:
+            if self.attrs._with:
                 info("with:")
-                for k, v in self.inputs.items():
+                for k, v in self.attrs._with.items():
                     v = self.expand_expr(v)
                     self.inputs[k] = v
                     info(f"  {k}: {v}")
