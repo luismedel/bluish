@@ -409,8 +409,6 @@ class ContextNode:
 
 
 class WorkflowContext(ContextNode):
-    SPECIAL_JOBS = ("init", "cleanup")
-
     def __init__(self, definition: dict[str, Any]) -> None:
         super().__init__(None, definition)
 
@@ -441,83 +439,34 @@ class WorkflowContext(ContextNode):
         self.jobs = {
             k: JobContext(self, k, v)
             for k, v in self.attrs.jobs.items()
-            if k not in self.SPECIAL_JOBS
         }
-        self.init_job = get_special_job("init")
-        self.cleanup_job = get_special_job("cleanup")
         self.var = dict(self.attrs.var)
 
     def dispatch(self) -> process.ProcessResult:
         self.status = ExecutionStatus.RUNNING
 
         try:
-            init_result = self._dispatch_init_job()
-            if init_result and init_result.failed:
-                assert self.init_job is not None
-                error(f"Init job failed with exit code {init_result.returncode}")
-                if not self.init_job.attrs.continue_on_error:
-                    self.failed = True
-                    self.result = init_result
-            else:
-                for job in self.jobs.values():
-                    result = self.dispatch_job(
-                        job, no_deps=False, run_init_cleanup=False
-                    )
-                    if not result:
-                        continue
+            for job in self.jobs.values():
+                result = self.dispatch_job(
+                    job, no_deps=False, run_init_cleanup=False
+                )
+                if not result:
+                    continue
 
-                    self.result = result
-                    if result.failed and not job.attrs.continue_on_error:
-                        self.failed = True
-                        break
+                self.result = result
+                if result.failed and not job.attrs.continue_on_error:
+                    self.failed = True
+                    break
 
             return self.result
 
         finally:
             self.status = ExecutionStatus.FINISHED
 
-            cleanup_result = self._dispatch_cleanup_job()
-            if cleanup_result and cleanup_result.failed:
-                assert self.cleanup_job is not None
-                error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
-                if not self.cleanup_job.attrs.continue_on_error:
-                    self.failed = True
-                    self.result = cleanup_result
-                    return self.result
-
-    def _dispatch_init_job(self) -> process.ProcessResult | None:
-        if not self.init_job:
-            return None
-        return self.init_job.dispatch()
-
-    def _dispatch_cleanup_job(self) -> process.ProcessResult | None:
-        if not self.cleanup_job:
-            return None
-        return self.cleanup_job.dispatch()
-
     def dispatch_job(
-        self, job: "JobContext", no_deps: bool, run_init_cleanup: bool = True
+        self, job: "JobContext", no_deps: bool
     ) -> process.ProcessResult | None:
-        if not run_init_cleanup:
-            return self.__dispatch_job(job, no_deps, set())
-
-        try:
-            init_result = self._dispatch_init_job()
-            if init_result and init_result.failed:
-                assert self.init_job is not None
-                error(f"Init job failed with exit code {init_result.returncode}")
-                if not self.init_job.attrs.continue_on_error:
-                    return init_result
-
-            return self.__dispatch_job(job, no_deps, set())
-
-        finally:
-            cleanup_result = self._dispatch_cleanup_job()
-            if cleanup_result and cleanup_result.failed:
-                assert self.cleanup_job is not None
-                error(f"Cleanup job failed with exit code {cleanup_result.returncode}")
-                if not self.cleanup_job.attrs.continue_on_error:
-                    return cleanup_result
+        return self.__dispatch_job(job, no_deps, set())
 
     def __dispatch_job(
         self, job: "JobContext", no_deps: bool, visited_jobs: set[str]
