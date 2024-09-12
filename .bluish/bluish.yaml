@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.0.31"
+  project_version: "0.0.32"
 
 jobs:
   publish:
@@ -95,9 +95,9 @@ jobs:
           dockerfile: ./Dockerfile-${{ matrix.flavor }}
           context: .
           tags:
-            - "bluish-${{ matrix.flavor }}:${{ project_version }}"
-            - "bluish-${{ matrix.flavor }}:latest"
+            - "luismedel/bluish-${{ matrix.flavor }}:${{ project_version }}"
+            - "luismedel/bluish-${{ matrix.flavor }}:latest"
 
       - run: |
-          docker image push -a bluish-${{ matrix.flavor }}
+          docker image push -a luismedel/bluish-${{ matrix.flavor }}
           rm ./Dockerfile-${{ matrix.flavor }}
