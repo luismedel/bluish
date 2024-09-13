@@ -40,6 +40,33 @@ def docker_ps(
     return step.job.exec(f"docker ps -f {filter} --all --quiet", step)
 
 
+@action(
+    "docker/login",
+    required_inputs=["username", "password"],
+    sensitive_inputs=["password"],
+)
+def docker_login(step: StepContext) -> ProcessResult:
+    inputs = step.inputs
+
+    username = inputs["username"]
+    password = inputs["password"]
+    registry = inputs.get("registry", "")
+
+    command = step.expand_expr(
+        f"docker login --username '{username}' --password '{password}' {registry}"
+    )
+    if step.get_inherited_attr("echo_commands", True):
+        protected_command = (
+            f"docker login --username '{username}' --password ******** {registry}"
+        )
+        info(f"Docker login:\n -> {protected_command}")
+
+    login_result = step.job.exec(command, step, stream_output=True)
+    if login_result.failed:
+        error(f"Login failed: {login_result.error}")
+    return login_result
+
+
 @action("docker/build", required_inputs=["tags"])
 def docker_build(step: StepContext) -> ProcessResult:
     inputs = step.inputs
@@ -48,7 +75,6 @@ def docker_build(step: StepContext) -> ProcessResult:
 
     options = f"-f '{dockerfile}'"
     options += _build_list_opt("-t", inputs.get("tags"))
-    
     working_dir = step.get_inherited_attr("working_directory", ".")
     context = inputs.get("context", working_dir)
     command = step.expand_expr(f"docker build {options} {context}")

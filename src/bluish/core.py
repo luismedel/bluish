@@ -330,7 +330,7 @@ class ContextNode:
         self.id: str = self.attrs.id
         self.env = dict(self.attrs.env)
         self.var = dict(self.attrs.var)
-        self.outputs = {}
+        self.outputs: dict[str, Any] = {}
         self.result = process.ProcessResult()
         self.failed = False
         self.status: ExecutionStatus = ExecutionStatus.PENDING
@@ -343,7 +343,12 @@ class ContextNode:
 
         if not isinstance(value, str):
             if isinstance(value, dict):
-                return {self.expand_expr(k, _depth=_depth): self.expand_expr(v, _depth=_depth) for k, v in value.items()}
+                return {
+                    self.expand_expr(k, _depth=_depth): self.expand_expr(
+                        v, _depth=_depth
+                    )
+                    for k, v in value.items()
+                }
             elif isinstance(value, list):
                 return [self.expand_expr(v, _depth=_depth) for v in value]
             else:
@@ -424,22 +429,7 @@ class WorkflowContext(ContextNode):
             **dotenv_values(".env"),
         }
 
-        def get_special_job(job_id: str) -> JobContext | None:
-            if job_id not in self.SPECIAL_JOBS:
-                raise ValueError(f"Invalid special job id: {job_id}")
-            result = (
-                JobContext(self, job_id, self.attrs.jobs[job_id])
-                if job_id in self.attrs.jobs
-                else None
-            )
-            if result and result.attrs.depends_on:
-                raise ValueError(f"Job {job_id} cannot have dependencies")
-            return result
-
-        self.jobs = {
-            k: JobContext(self, k, v)
-            for k, v in self.attrs.jobs.items()
-        }
+        self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
         self.var = dict(self.attrs.var)
 
     def dispatch(self) -> process.ProcessResult:
@@ -447,9 +437,7 @@ class WorkflowContext(ContextNode):
 
         try:
             for job in self.jobs.values():
-                result = self.dispatch_job(
-                    job, no_deps=False, run_init_cleanup=False
-                )
+                result = self.dispatch_job(job, no_deps=False)
                 if not result:
                     continue
 
@@ -485,9 +473,6 @@ class WorkflowContext(ContextNode):
         if not no_deps:
             debug("Getting dependency map...")
             for dependency_id in job.attrs.depends_on or []:
-                if dependency_id in self.SPECIAL_JOBS:
-                    raise ValueError(f"Invalid dependency job id: {dependency_id}")
-
                 dep_job = self.jobs.get(dependency_id)
                 if not dep_job:
                     raise RuntimeError(f"Invalid dependency job id: {dependency_id}")
@@ -699,8 +684,8 @@ class StepContext(ContextNode):
 
         self.id = self.attrs.id
 
-        self.inputs = {}
-        self.outputs = {}
+        self.inputs: dict[str, Any] = {}
+        self.outputs: dict[str, Any] = {}
 
     def dispatch(self) -> process.ProcessResult | None:
         if self.attrs.name:
@@ -716,18 +701,12 @@ class StepContext(ContextNode):
         self.status = ExecutionStatus.RUNNING
 
         try:
-            fqn = self.attrs.uses or DEFAULT_ACTION
-            fn = REGISTERED_ACTIONS.get(fqn)
+            fn = REGISTERED_ACTIONS.get(self.attrs.uses or DEFAULT_ACTION)
             if not fn:
-                raise ValueError(f"Unknown action: {fqn}")
+                raise ValueError(f"Unknown action: {self.attrs.uses}")
 
-            info(f"Run {fqn}")
-            if self.attrs._with:
-                info("with:")
-                for k, v in self.attrs._with.items():
-                    v = self.expand_expr(v)
-                    self.inputs[k] = v
-                    info(f"  {k}: {v}")
+            if self.attrs.uses:
+                info(f"Running {self.attrs.uses}")
 
             self.result = fn(self)
             self.failed = self.result.failed
@@ -752,6 +731,7 @@ def action(
     fqn: str,
     required_attrs: list[str] | None = None,
     required_inputs: list[str] | None = None,
+    sensitive_inputs: list[str] | None = None,
 ) -> Any:
     """Defines a new action.
 
@@ -775,12 +755,22 @@ def action(
                         raise RequiredAttributeError(attr)
 
             if required_inputs:
-                if not step.inputs:
+                if not step.attrs._with:
                     raise RequiredInputError(required_inputs[0])
 
                 for param in required_inputs:
-                    if not key_exists(param, step.inputs):
+                    if not key_exists(param, step.attrs._with):
                         raise RequiredInputError(param)
+
+            if step.attrs._with:
+                info("with:")
+                for k, v in step.attrs._with.items():
+                    v = step.expand_expr(v)
+                    step.inputs[k] = v
+                    if sensitive_inputs and k in sensitive_inputs:
+                        info(f"  {k}: ***")
+                    else:
+                        info(f"  {k}: {v}")
 
             step.result = func(step)
 
