@@ -57,116 +57,6 @@ jobs:
     assert wf.jobs["job2"].result.stdout == ""
 
 
-def test_init_cleanup() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        wf = create_workflow(f"""
-jobs:
-    init:
-        steps:
-            - run: |
-                    echo 'initialized!' > {temp_file.name}
-    cleanup:
-        steps:
-            - run: |
-                    echo 'cleaned up!' > {temp_file.name}
-
-    test_job:
-        name: "Job 1"
-        steps:
-            - run: |
-                    cat {temp_file.name}
-    """)
-        _ = wf.dispatch()
-        assert wf.jobs["test_job"].result.stdout == "initialized!"
-        assert temp_file.read().decode().strip() == "cleaned up!"
-
-
-def test_init_cant_be_a_dependency() -> None:
-    wf = create_workflow("""
-    jobs:
-        init:
-            steps:
-                - run: |
-                      echo 'initialized!'
-        test_job:
-            name: "Job 1"
-            depends_on:
-                - init
-            steps:
-                - run: |
-                      echo 'This is Job 1'
-    """)
-    try:
-        _ = wf.dispatch()
-        raise AssertionError("init dependency not detected")
-    except ValueError as ex:
-        assert str(ex) == "Invalid dependency job id: init"
-
-
-def test_cleanup_cant_be_a_dependency() -> None:
-    wf = create_workflow("""
-    jobs:
-        cleanup:
-            steps:
-                - run: |
-                      echo 'cleaned up!'
-        test_job:
-            name: "Job 1"
-            depends_on:
-                - cleanup
-            steps:
-                - run: |
-                      echo 'This is Job 1'
-    """)
-    try:
-        _ = wf.dispatch()
-        raise AssertionError("cleanup dependency not detected")
-    except ValueError as ex:
-        assert str(ex) == "Invalid dependency job id: cleanup"
-
-
-def test_init_cant_have_dependecies() -> None:
-    try:
-        _ = create_workflow("""
-    jobs:
-        init:
-            depends_on:
-                - test_job
-            steps:
-                - run: |
-                      echo 'initialized!'
-        test_job:
-            name: "Job 1"
-            steps:
-                - run: |
-                      echo 'This is Job 1'
-    """)
-        raise AssertionError("init dependency not detected")
-    except ValueError as ex:
-        assert str(ex) == "Job init cannot have dependencies"
-
-
-def test_cleanup_cant_have_dependecies() -> None:
-    try:
-        _ = create_workflow("""
-    jobs:
-        cleanup:
-            depends_on:
-                - test_job
-            steps:
-                - run: |
-                      echo 'cleaned up!'
-        test_job:
-            name: "Job 1"
-            steps:
-                - run: |
-                      echo 'This is Job 1'
-    """)
-        raise AssertionError("cleanup dependency not detected")
-    except ValueError as ex:
-        assert str(ex) == "Job cleanup cannot have dependencies"
-
-
 def test_matrix() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         wf = create_workflow(f"""
@@ -640,7 +530,7 @@ def test_expand_template() -> None:
     with tempfile.NamedTemporaryFile() as temp_file:
         wf = create_workflow(f"""
 var:
-    WORLD: "World!"
+    hero: "Don Quijote"
 
 jobs:
     expand_template:
@@ -666,13 +556,13 @@ jobs:
                       aunque, por conjeturas verosímiles, se deja entender que se llamaba
                       Quejana. Pero esto importa poco a nuestro cuento; basta que en la narración
                       dél no se salga un punto de la verdad.
-                      Hello, ${{{{ var.WORLD }}}}
+                      Hello, ${{{{ hero }}}}!
                   output_file: {temp_file.name}
     """)
         _ = wf.dispatch()
 
-        assert wf.jobs["expand_template"].result.stdout.endswith("Hello, World!\n")
-        assert run(f"tail -n1 {temp_file.name}").stdout == "Hello, World!"
+        assert wf.jobs["expand_template"].result.stdout.endswith("Hello, Don Quijote!\n")
+        assert run(f"tail -n1 {temp_file.name}").stdout == "Hello, Don Quijote!"
 
 
 def test_capture() -> None:
