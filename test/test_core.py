@@ -1,4 +1,5 @@
 
+import logging
 import tempfile
 from test.utils import create_workflow
 
@@ -465,6 +466,31 @@ jobs:
     assert wf.jobs["test_job"].steps["step-1"].get_value("job.var.VALUE") == 2
     assert wf.jobs["test_job"].get_value("var.VALUE") == 2
     assert wf.jobs["test_job"].get_value("job.var.VALUE") == 2
+
+
+def test_secrets_are_redacted_in_log(caplog) -> None:
+    caplog.set_level(logging.DEBUG)
+    
+    wf = create_workflow("""
+secrets:
+    my_secret: "hello"
+
+var:
+    my_var: "world"
+
+jobs:
+    test_job:
+        name: Test values
+        steps:
+            - run: |
+                  echo "secret is = ${{ secrets.my_secret }}"
+                  echo "var is = ${{ var.my_var }}"
+""")
+    _ = wf.dispatch()
+
+    assert wf.get_value("jobs.test_job.steps.step_1.result") == "secret is = hello\nvar is = world"
+    assert "secret is = ***" in caplog.text
+    assert "var is = world" in caplog.text
 
 
 def test_set() -> None:

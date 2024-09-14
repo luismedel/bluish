@@ -1,8 +1,8 @@
 import base64
 import os
 import re
+from collections import namedtuple
 from itertools import product
-from logging import debug, error, info, warning
 from typing import Any, Optional, TypeVar, cast
 from uuid import uuid4
 
@@ -10,6 +10,8 @@ from dotenv import dotenv_values
 
 from bluish import action, process
 from bluish.core import ExecutionStatus
+from bluish.logging import debug, error, info, warning
+from bluish.redacted_string import RedactedString
 
 
 class CircularDependencyError(Exception):
@@ -68,15 +70,15 @@ class ContextNode:
         raise NotImplementedError()
 
     def expand_expr(self, value: Any) -> Any:
-        return expand_expr(self, value)
+        return _expand_expr(self, value)
 
     def get_value(
         self, name: str, default: Any = None, raw: bool = False
     ) -> str | None:
-        found, value = _try_get_value(self, name, raw=raw)
-        if not found and default is None:
+        value = _try_get_value(self, name, raw=raw)
+        if value is None and default is None:
             raise ValueError(f"Variable {name} not found")
-        return default if not found else value
+        return value if value is not None else default
 
     def set_value(self, name: str, value: Any) -> None:
         if not _try_set_value(self, name, value):
@@ -104,7 +106,13 @@ class WorkflowContext(ContextNode):
         super().__init__(None, definition)
 
         self.attrs.ensure_property("var", {})
+        self.attrs.ensure_property("secrets", {})
         self.attrs.ensure_property("jobs", {})
+
+        self.secrets = {
+            **self.attrs.secrets,
+            **dotenv_values(self.attrs.secrets_file or ".secrets"),
+        }
 
         self.env = {
             **self.attrs.env,
@@ -112,7 +120,7 @@ class WorkflowContext(ContextNode):
 
         self.sys_env = {
             **os.environ,
-            **dotenv_values(".env"),
+            **dotenv_values(self.attrs.env_file or ".env"),
         }
 
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
@@ -303,7 +311,6 @@ class JobContext(ContextNode):
 
         if "BLUISH_OUTPUT" in env:
             warning(
-                self,
                 "BLUISH_OUTPUT is a reserved environment variable. Overwriting it.",
             )
 
@@ -440,26 +447,27 @@ def get_workflow(ctx: "ContextNode") -> WorkflowContext | None:
     return None
 
 
-def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> tuple[bool, str]:
-    def prepare_value(value: str | None) -> tuple[bool, str]:
+ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
+
+
+def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None:
+    def prepare_value(value: str | None) -> str | None:
         if value is None:
-            return (True, "")
+            return None
+        elif raw:
+            return value
         else:
-            return (True, value if raw else ctx.expand_expr(value))
+            return cast(str, _expand_expr(ctx, value))
 
     if "." not in name:
         # Handle a non-fully qualified variable name and avoid ambiguity
-        member_found, member_value = _try_get_value(ctx, f".{name}", raw=True)
-        var_found, var_value = _try_get_value(ctx, f"var.{name}", raw=True)
+        member_result = _try_get_value(ctx, f".{name}", raw=raw)
+        var_result = _try_get_value(ctx, f"var.{name}", raw=raw)
 
-        if var_found and member_found:
+        if var_result and member_result:
             raise ValueError(f"Ambiguous value reference: {name}")
-        elif var_found:
-            return prepare_value(var_value)
-        elif member_found:
-            return prepare_value(member_value)
         else:
-            return (False, "")
+            return var_result or member_result or None
 
     root, varname = name.split(".", maxsplit=1)
 
@@ -484,6 +492,10 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> tuple[bool
         wf = get_workflow(ctx)
         if wf:
             return _try_get_value(wf, varname, raw)
+    elif root == "secrets":
+        wf = get_workflow(ctx)
+        if wf and varname in wf.secrets:
+            return prepare_value(wf.secrets[varname])
     elif root == "jobs":
         wf = get_workflow(ctx)
         if wf:
@@ -524,14 +536,15 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> tuple[bool
         if node and varname in node.outputs:
             return prepare_value(node.outputs[varname])
 
-    return (False, "")
+    return None
 
 
 def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     if "." not in name:
         return False
 
-    root, varname = expand_expr(ctx, name).split(".", maxsplit=1)
+    name = cast(str, _expand_expr(ctx, name))
+    root, varname = name.split(".", maxsplit=1)
     if root == "":
         root, varname = varname.split(".", maxsplit=1)
 
@@ -583,22 +596,21 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     return False
 
 
-def expand_expr(ctx: ContextNode, value: Any, _depth: int = 1) -> Any:
-    MAX_EXPAND_RECURSION = 5
+TExpandValue = str | dict[str, Any] | list[str]
 
-    if value is None:
-        return ""
+
+def _expand_expr(
+    ctx: ContextNode, value: TExpandValue | None, _depth: int = 1
+) -> TExpandValue:
+    MAX_EXPAND_RECURSION = 5
 
     if not isinstance(value, str):
         if isinstance(value, dict):
-            return {
-                expand_expr(ctx, k, _depth=_depth): expand_expr(ctx, v, _depth=_depth)
-                for k, v in value.items()
-            }
+            return {k: _expand_expr(ctx, v, _depth=_depth) for k, v in value.items()}
         elif isinstance(value, list):
-            return [expand_expr(ctx, v, _depth=_depth) for v in value]
+            return [cast(str, _expand_expr(ctx, v, _depth=_depth)) for v in value]
         else:
-            return value
+            return ""
 
     if "$" not in value:
         return value
@@ -606,12 +618,15 @@ def expand_expr(ctx: ContextNode, value: Any, _depth: int = 1) -> Any:
     if _depth == MAX_EXPAND_RECURSION:
         raise VariableExpandError()
 
+    SENSITIVE_LITERALS = ("password", "secret", "token")
+
     def replace_match(match: re.Match[str]) -> str:
-        if match.group(0).startswith("$$"):
-            return match.group(0)[1:]
+        group0 = match.group(0)
+        if group0.startswith("$$"):
+            return group0[1:]
         try:
             v = ctx.get_value(match.group(1), raw=True)
-            return str(expand_expr(ctx, v, _depth=_depth + 1))
+            return str(_expand_expr(ctx, v, _depth=_depth + 1))
         except VariableExpandError:
             if _depth > 1:
                 raise
@@ -619,7 +634,24 @@ def expand_expr(ctx: ContextNode, value: Any, _depth: int = 1) -> Any:
                 f"Too much recursion expanding {match.group(1)} in '{value}'"
             )
 
-    return VAR_REGEX.sub(replace_match, value)
+    def replace_or_redact_match(match: re.Match[str]) -> str:
+        group0 = match.group(0)
+        if group0.startswith("$$"):
+            return group0[1:]
+        # Ignore error control. In a previous run we already checked that the variable exists
+        group1 = match.group(1)
+        if any(s in group1 for s in SENSITIVE_LITERALS):
+            return "************"
+        else:
+            v = ctx.get_value(group1, raw=True)
+            return str(_expand_expr(ctx, v, _depth=_depth + 1))
+
+    if any(s in value for s in SENSITIVE_LITERALS):
+        result = RedactedString(VAR_REGEX.sub(replace_match, value))
+        result.redacted_value = VAR_REGEX.sub(replace_or_redact_match, value)
+        return result
+    else:
+        return VAR_REGEX.sub(replace_match, value)
 
 
 def can_dispatch(context: StepContext | JobContext) -> bool:

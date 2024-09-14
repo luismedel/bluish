@@ -1,10 +1,9 @@
 import os
-from logging import error, info
 
 from bluish.action import action
 from bluish.context import StepContext
+from bluish.logging import error, info
 from bluish.process import ProcessResult
-from bluish.utils import decorate_for_log
 
 
 @action("core/default-action", required_attrs=["run|set"])
@@ -27,7 +26,7 @@ def generic_run(step: StepContext) -> ProcessResult:
     command = step.expand_expr(command)
 
     if echo_commands:
-        info(decorate_for_log(command, "> "))
+        info(command)
 
     return step.job.exec(command, step, stream_output=echo_output)
 

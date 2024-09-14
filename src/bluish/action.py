@@ -1,6 +1,7 @@
 from functools import wraps
-from logging import debug, info
 from typing import Any, Callable, Dict
+
+from bluish.logging import debug, info
 
 DEFAULT_ACTION = "core/default-action"
 
