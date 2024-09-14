@@ -3,11 +3,10 @@ import tempfile
 from test.utils import create_workflow
 
 import pytest
+from bluish.action import RequiredAttributeError, RequiredInputError
+from bluish.context import CircularDependencyError
 from bluish.core import (
-    CircularDependencyError,
     ExecutionStatus,
-    RequiredAttributeError,
-    RequiredInputError,
     init_commands,
 )
 from bluish.process import run
@@ -419,8 +418,8 @@ jobs:
                 workflow.var.test_result: ${{ .result }}
 """)
     _ = wf.dispatch()
-    wf.get_value("test_result") == "Yes!"
-    wf.get_value("var.test_result") == "Yes!"
+    assert wf.get_value("test_result") == "Yes!"
+    assert wf.get_value("var.test_result") == "Yes!"
 
 
 def test_working_dir_expansion() -> None:

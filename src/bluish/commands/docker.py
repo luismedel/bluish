@@ -1,6 +1,7 @@
 from logging import debug, error, info, warning
 
-from bluish.core import StepContext, action
+from bluish.action import action
+from bluish.context import StepContext
 from bluish.process import ProcessResult
 from bluish.utils import decorate_for_log
 
