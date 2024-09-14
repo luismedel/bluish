@@ -1,6 +1,8 @@
 .e/
 .ruff_cache/
 ./build/
+.env
+.secrets
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
