@@ -1,9 +1,9 @@
 import os
-from logging import error, info
 
-from bluish.core import StepContext, action, read_file, write_file
+from bluish.action import action
+from bluish.context import StepContext
+from bluish.logging import error, info
 from bluish.process import ProcessResult
-from bluish.utils import decorate_for_log
 
 
 @action("core/default-action", required_attrs=["run|set"])
@@ -26,7 +26,7 @@ def generic_run(step: StepContext) -> ProcessResult:
     command = step.expand_expr(command)
 
     if echo_commands:
-        info(decorate_for_log(command, "> "))
+        info(command)
 
     return step.job.exec(command, step, stream_output=echo_output)
 
@@ -40,7 +40,7 @@ def expand_template(step: StepContext) -> ProcessResult:
         template_file = inputs["input_file"]
 
         info(f"Reading template file: {template_file}...")
-        template_content = read_file(step, template_file).decode()
+        template_content = step.job.read_file(template_file).decode()
     else:
         template_content = inputs["input"]
 
@@ -49,7 +49,7 @@ def expand_template(step: StepContext) -> ProcessResult:
     output_file = inputs.get("output_file")
     if output_file:
         info(f"Writing expanded content to: {output_file}...")
-        write_file(step, output_file, expanded_content.encode())
+        step.job.write_file(output_file, expanded_content.encode())
 
         if "chmod" in inputs:
             permissions = inputs["chmod"]
@@ -78,7 +78,7 @@ def upload_file(step: StepContext) -> ProcessResult:
 
     info(f"Writing file to: {destination_file}...")
     try:
-        write_file(step, destination_file, contents.encode())
+        step.job.write_file(destination_file, contents.encode())
         result = ProcessResult()
     except IOError as e:
         error(f"Failed to write file: {str(e)}")
@@ -102,7 +102,7 @@ def download_file(step: StepContext) -> ProcessResult:
     source_file = inputs["source_file"]
     info(f"Reading file: {source_file}...")
     try:
-        raw_contents = read_file(step, source_file)
+        raw_contents = step.job.read_file(source_file)
     except IOError as e:
         error(f"Failed to read file: {str(e)}")
         return ProcessResult(returncode=1)

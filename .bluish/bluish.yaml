@@ -1,13 +1,13 @@
 
 var:
-  project_version: "0.0.32"
+  project_version: "0.1.0"
 
 jobs:
   publish:
 
     name: Publishes the latest release of Bluish 
 
-    runs_on: docker://python:3.12-alpine
+    runs_on: docker://python:3.11-alpine
 
     steps:
       - uses: linux/install-packages

@@ -1,7 +1,8 @@
 import os
-from logging import error, info
 
-from bluish.core import StepContext, action
+from bluish.action import action
+from bluish.context import StepContext
+from bluish.logging import error, info
 from bluish.process import ProcessResult, install_package
 
 

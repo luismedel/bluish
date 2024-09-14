@@ -3,6 +3,15 @@ import logging
 import subprocess
 from typing import Callable
 
+SHELLS = {
+    "bash": "bash -euo pipefail",
+    "sh": "sh -eu",
+    "python": "python3 -qsIEB",
+}
+
+
+DEFAULT_SHELL = "sh"
+
 
 class ProcessResult(subprocess.CompletedProcess[str]):
     """The result of a process execution."""
