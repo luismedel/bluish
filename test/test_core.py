@@ -453,8 +453,8 @@ jobs:
             - id: step-1
               run: echo 'VALUE == ${{ var.VALUE }}'
               set:
-                jobs.test_job.var.VALUE: 99  # Will be overridden by the next line
-                job.var.VALUE: 2
+                  jobs.test_job.var.VALUE: 99  # Will be overridden by the next line
+                  job.var.VALUE: 2
 """)
     _ = wf.dispatch()
 

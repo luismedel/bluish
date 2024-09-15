@@ -613,7 +613,7 @@ def _expand_expr(
         elif isinstance(value, list):
             return [cast(str, _expand_expr(ctx, v, _depth=_depth)) for v in value]
         else:
-            return ""
+            return value  # type: ignore
 
     if "$" not in value:
         return value
