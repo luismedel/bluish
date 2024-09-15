@@ -1,3 +1,5 @@
+[![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)
+
 # Bluish
 
 A CI/CD automation tool that runs everywhere and has `make` ergonomics.
