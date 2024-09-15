@@ -90,15 +90,18 @@ class ContextNode:
     def get_inherited_attr(
         self, name: str, default: TResult | None = None
     ) -> TResult | None:
+        result = default
         ctx: ContextNode | None = self
         while ctx is not None:
             if hasattr(ctx, name):
-                return cast(TResult, getattr(ctx, name))
+                result = cast(TResult, getattr(ctx, name))
+                break
             elif name in ctx.attrs:
-                return cast(TResult, getattr(ctx.attrs, name))
+                result = cast(TResult, getattr(ctx.attrs, name))
+                break
             else:
                 ctx = ctx.parent
-        return default
+        return self.expand_expr(result)
 
 
 class WorkflowContext(ContextNode):

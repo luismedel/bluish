@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.1.0"
+  project_version: "0.1.1"
   python_version: "3.12"
 
 jobs:
@@ -76,7 +76,7 @@ jobs:
         with:
           input: |
             FROM ${{ matrix.flavor }}:latest
-            RUN apk add --no-cache python3~${{ python_version }} py-pip python3-venv git
+            RUN apk add --no-cache python3~${{ python_version }} py-pip py3-virtualenv git
             RUN pip3 install bluish==${{ project_version }} --break-system-packages
           output_file: ./Dockerfile-${{ matrix.flavor }}
 
