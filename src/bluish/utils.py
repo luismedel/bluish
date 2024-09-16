@@ -1,11 +1,29 @@
 # The dreaded "utils" module, where lazy programmers put all the miscellaneous functions.
 
 
-def decorate_for_log(value: str, decoration: str = "    ") -> str:
+from bluish.redacted_string import RedactedString
+
+
+def safe_string(value: str | RedactedString) -> str:
+    """Returns the string value of a RedactedString."""
+    if isinstance(value, RedactedString):
+        return value.redacted_value
+    else:
+        return value
+
+
+def decorate_for_log(value: str | RedactedString, decoration: str = "    ") -> str:
     """Decorates a multiline string for pretty logging."""
 
-    if "\n" not in value:
-        return f"{decoration}value"
+    def decorate(value: str, decoration: str) -> str:
+        if "\n" not in value:
+            return f"{decoration}{value}"
+        lines = value.splitlines(keepends=True)
+        return "\n" + "".join(f"{decoration}{line}" for line in lines)
 
-    lines = value.splitlines(keepends=True)
-    return "\n" + "".join(f"{decoration}{line}" for line in lines)
+    if isinstance(value, RedactedString):
+        result = RedactedString(value)
+        result.redacted_value = decorate(value.redacted_value, decoration)
+        return result
+    else:
+        return decorate(value, decoration)

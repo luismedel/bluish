@@ -2,6 +2,7 @@ from functools import wraps
 from typing import Any, Callable, Dict
 
 from bluish.logging import debug, info
+from bluish.utils import safe_string
 
 DEFAULT_ACTION = "core/default-action"
 
@@ -61,9 +62,9 @@ def action(
                     v = step.expand_expr(v)
                     step.inputs[k] = v
                     if sensitive_inputs and k in sensitive_inputs:
-                        info(f"  {k}: ***")
+                        info(f"  {k}: ********")
                     else:
-                        info(f"  {k}: {v}")
+                        info(f"  {k}: {safe_string(v)}")
 
             step.result = func(step)
 

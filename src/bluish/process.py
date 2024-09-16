@@ -3,6 +3,8 @@ import logging
 import subprocess
 from typing import Callable
 
+from bluish.logging import debug
+
 SHELLS = {
     "bash": "bash -euo pipefail",
     "sh": "sh -eu",
@@ -50,7 +52,13 @@ def _get_docker_pid(host: str) -> str:
         docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
     if not docker_pid:
         logging.info(f"Preparing container {host}...")
-        docker_pid = run(f"docker run --detach {host} sleep infinity").stdout.strip()
+        command = f"docker run --detach {host} sleep infinity"
+        debug(f" > {command}")
+        run_result = run(command)
+        if run_result.failed:
+            raise ValueError(f"Could not start container {host}: {run_result.error}")
+        docker_pid = run_result.stdout.strip()
+        debug(f"Docker pid {docker_pid}")
     return docker_pid
 
 
