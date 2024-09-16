@@ -16,9 +16,13 @@ def decorate_for_log(value: str | RedactedString, decoration: str = "    ") -> s
     """Decorates a multiline string for pretty logging."""
 
     def decorate(value: str, decoration: str) -> str:
+        value = value.rstrip()
+        if not value:
+            return value
+
         if "\n" not in value:
             return f"{decoration}{value}"
-        lines = value.splitlines(keepends=True)
+        lines = value.rstrip().splitlines(keepends=True)
         return "\n" + "".join(f"{decoration}{line}" for line in lines)
 
     if isinstance(value, RedactedString):

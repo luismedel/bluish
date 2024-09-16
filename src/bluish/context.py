@@ -3,7 +3,7 @@ import os
 import re
 from collections import namedtuple
 from itertools import product
-from typing import Any, Optional, TypeVar, cast
+from typing import Any, Callable, Optional, TypeVar, cast
 from uuid import uuid4
 
 from dotenv import dotenv_values
@@ -67,15 +67,29 @@ class ContextNode:
         self.failed = False
         self.status: ExecutionStatus = ExecutionStatus.PENDING
 
+        self._expression_parser: Callable[[str, bool], Any] | None = None
+
     @property
     def display_name(self) -> str:
         return self.attrs.name or self.id
+
+    @property
+    def expression_parser(self) -> Callable[[str, bool], Any]:
+        # HACK This doesn't make me happy
+        from bluish.expressions import create_parser
+
+        if not self._expression_parser:
+            self._expression_parser = create_parser(self)
+        return self._expression_parser
 
     def dispatch(self) -> process.ProcessResult | None:
         raise NotImplementedError()
 
     def expand_expr(self, value: Any) -> Any:
-        return _expand_expr(self, value)
+        if isinstance(value, str):
+            return _expand_expr(self, value)
+        else:
+            return value
 
     def get_value(
         self, name: str, default: Any = None, raw: bool = False
@@ -349,10 +363,10 @@ class JobContext(ContextNode):
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
-            info(decorate_for_log(line.rstrip(), "  "))
+            info(decorate_for_log(line.rstrip(), " -> "))
 
         def stderr_handler(line: str) -> None:
-            error(decorate_for_log(line.rstrip(), "* "))
+            error(decorate_for_log(line.rstrip(), " ** "))
 
         run_result = process.run(
             command,
@@ -423,7 +437,7 @@ class VariableExpandError(Exception):
     pass
 
 
-VAR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
+EXPR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
 
 
 def get_step(ctx: "ContextNode") -> StepContext | None:
@@ -605,7 +619,8 @@ TExpandValue = str | dict[str, Any] | list[str]
 def _expand_expr(
     ctx: ContextNode, value: TExpandValue | None, _depth: int = 1
 ) -> TExpandValue:
-    MAX_EXPAND_RECURSION = 5
+    # HACK This doesn't make me happy
+    from bluish.expressions import SENSITIVE_LITERALS
 
     if not isinstance(value, str):
         if isinstance(value, dict):
@@ -618,43 +633,11 @@ def _expand_expr(
     if "$" not in value:
         return value
 
-    if _depth == MAX_EXPAND_RECURSION:
-        raise VariableExpandError()
-
-    SENSITIVE_LITERALS = ("password", "secret", "token")
-
-    def replace_match(match: re.Match[str]) -> str:
-        group0 = match.group(0)
-        if group0.startswith("$$"):
-            return group0[1:]
-        try:
-            v = ctx.get_value(match.group(1), raw=True)
-            return str(_expand_expr(ctx, v, _depth=_depth + 1))
-        except VariableExpandError:
-            if _depth > 1:
-                raise
-            raise RecursionError(
-                f"Too much recursion expanding {match.group(1)} in '{value}'"
-            )
-
-    def replace_or_redact_match(match: re.Match[str]) -> str:
-        group0 = match.group(0)
-        if group0.startswith("$$"):
-            return group0[1:]
-        # Ignore error control. In a previous run we already checked that the variable exists
-        group1 = match.group(1)
-        if any(s in group1 for s in SENSITIVE_LITERALS):
-            return "************"
-        else:
-            v = ctx.get_value(group1, raw=True)
-            return str(_expand_expr(ctx, v, _depth=_depth + 1))
-
+    result = ctx.expression_parser(value, False)
     if any(s in value for s in SENSITIVE_LITERALS):
-        result = RedactedString(VAR_REGEX.sub(replace_match, value))
-        result.redacted_value = VAR_REGEX.sub(replace_or_redact_match, value)
-        return result
-    else:
-        return VAR_REGEX.sub(replace_match, value)
+        result = RedactedString(result)
+        result.redacted_value = ctx.expression_parser(value, True)
+    return result
 
 
 def can_dispatch(context: StepContext | JobContext) -> bool:
@@ -662,13 +645,14 @@ def can_dispatch(context: StepContext | JobContext) -> bool:
         return True
 
     info(f"Testing {context.attrs._if}")
-    if not isinstance(context.attrs._if, str):
-        raise ValueError("Condition must be a string")
+    if isinstance(context.attrs._if, bool):
+        return context.attrs._if
+    elif not isinstance(context.attrs._if, str):
+        raise ValueError("Condition must be a bool or a string")
 
-    check_cmd = context.attrs._if.strip()
-    job = get_job(context)
-    assert job is not None
-    return job.exec(check_cmd, context, shell=process.DEFAULT_SHELL).returncode == 0
+    result = context.expand_expr(context.attrs._if)
+    print(f"Result: {result}")
+    return bool(result)
 
 
 def _read_file(ctx: ContextNode, file_path: str) -> bytes:
