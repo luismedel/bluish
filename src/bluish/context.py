@@ -12,6 +12,7 @@ from bluish import action, process
 from bluish.core import ExecutionStatus
 from bluish.logging import debug, error, info, warning
 from bluish.redacted_string import RedactedString
+from bluish.utils import decorate_for_log
 
 
 class CircularDependencyError(Exception):
@@ -65,6 +66,10 @@ class ContextNode:
         self.result = process.ProcessResult()
         self.failed = False
         self.status: ExecutionStatus = ExecutionStatus.PENDING
+
+    @property
+    def display_name(self) -> str:
+        return self.attrs.name or self.id
 
     def dispatch(self) -> process.ProcessResult | None:
         raise NotImplementedError()
@@ -234,9 +239,7 @@ class JobContext(ContextNode):
     def dispatch(self) -> process.ProcessResult | None:
         self.status = ExecutionStatus.RUNNING
 
-        name = self.attrs.name or self.id
-        info("")
-        info(f"** {name}")
+        info(f"** Running job '{self.display_name}'")
 
         self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
 
@@ -346,10 +349,10 @@ class JobContext(ContextNode):
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
-            info(line)
+            info(decorate_for_log(line.rstrip(), "  "))
 
         def stderr_handler(line: str) -> None:
-            error(line)
+            error(decorate_for_log(line.rstrip(), "* "))
 
         run_result = process.run(
             command,
@@ -390,10 +393,7 @@ class StepContext(ContextNode):
         self.outputs: dict[str, Any] = {}
 
     def dispatch(self) -> process.ProcessResult | None:
-        if self.attrs.name:
-            info(f"* {self.attrs.name} ({self.id})")
-        else:
-            info(f"* {self.id}")
+        info(f"* Running step '{self.display_name}'")
 
         if not can_dispatch(self):
             self.status = ExecutionStatus.SKIPPED

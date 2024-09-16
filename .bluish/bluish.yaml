@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.1.1"
+  project_version: "0.2.0"
   python_version: "3.12"
 
 jobs:
@@ -76,8 +76,14 @@ jobs:
         with:
           input: |
             FROM ${{ matrix.flavor }}:latest
-            RUN apk add --no-cache python3~${{ python_version }} py-pip py3-virtualenv git
-            RUN pip3 install bluish==${{ project_version }} --break-system-packages
+            RUN apk add --no-cache \
+                  bash \
+                  python3~${{ python_version }} \
+                  py-pip \
+                  py3-virtualenv \
+                  git; \
+                  \
+                  pip3 install bluish==${{ project_version }} --break-system-packages
           output_file: ./Dockerfile-${{ matrix.flavor }}
 
       - name: "Build Ubuntu Dockerfile"
@@ -87,8 +93,16 @@ jobs:
         with:
           input: |
             FROM ${{ matrix.flavor }}:latest
-            RUN apt-get update -qq && apt-get install -qqy python${{ python_version }} python3-pip python3-venv git
-            RUN pip3 install bluish==${{ project_version }} --break-system-packages
+            RUN apt-get update -qq; \
+                apt-get install -qqy --no-install-recommends \
+                  python${{ python_version }} \
+                  python3-pip \
+                  python3-venv \
+                  git; \
+                \
+                pip3 install bluish==${{ project_version }} --break-system-packages; \
+                \
+                rm -rf /var/lib/apt/lists/*;
           output_file: ./Dockerfile-${{ matrix.flavor }}
 
       - uses: docker/build
