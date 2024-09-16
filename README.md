@@ -8,7 +8,7 @@ A CI/CD automation tool that runs everywhere and has `make` ergonomics.
 
 - YAML-based declarative approach (not that I love YAML, but...)
 - Githubactions-esque philosphy, but way simpler. In fact, Bluish is nearer to Make than to GA.
-- Runs _everywhere_, not tied to any vendor. Fire Bluish workflows from Github Actions, from a Gitlab workflow or from a cron-invoked a shell script.  
+- Runs _everywhere_, not tied to any vendor. Fire Bluish workflows from Github Actions, from a Gitlab workflow or from a cron-invoked shell script.  
 - Simple as hell. I only add new actions whenever I need them.
 
 ## Documentation
