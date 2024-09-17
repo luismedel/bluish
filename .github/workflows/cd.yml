@@ -1,0 +1,10 @@
+name: Fire the publish workflow
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: luismedel/bluish-alpine:latest
+    steps:
+    - run: |
+        blu publish
