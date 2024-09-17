@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.2.0"
+  project_version: "0.5.0"
   python_version: "3.12"
 
 jobs:
@@ -23,17 +23,21 @@ jobs:
         set:
           workflow.var.pypi_version: ${{ outputs.pypi_version }}
 
-      - name: Check if we got a valid PYPI_VERSION
+      - name: Abort if we didn't get a valid PYPI_VERSION
+        if: ${{ pypi_version == "" }}
         run: |
-          [ "${{ pypi_version }}" != "" ]
+          echo "Didn't get a valid PYPI_VERSION"
+          false
 
       - uses: git/checkout
         with:
           repository: https://github.com/luismedel/bluish
 
-      - name: Check if upload is needed
+      - name: Abort if upload is not needed
+        if: ${{ project_version == pypi_version }}
         run: |
-          [ "${{ project_version }}" != "${{ pypi_version }}" ]
+          echo "Upload is not needed (local==${{ project_version }}, remote==${{ pypi_version }})"
+          false
 
       - name: Update metadata in pyproject.toml
         uses: core/expand-template
@@ -71,8 +75,7 @@ jobs:
     steps:
       - name: "Build Alpine Dockerfile"
         uses: core/expand-template
-        if: |
-          [ "${{ matrix.flavor }}" == "alpine" ]
+        if: ${{ matrix.flavor == "alpine" }}
         with:
           input: |
             FROM ${{ matrix.flavor }}:latest
@@ -88,8 +91,7 @@ jobs:
 
       - name: "Build Ubuntu Dockerfile"
         uses: core/expand-template
-        if: |
-          [ "${{ matrix.flavor }}" == "ubuntu" ]
+        if: ${{ matrix.flavor == "ubuntu" }}
         with:
           input: |
             FROM ${{ matrix.flavor }}:latest

@@ -178,14 +178,14 @@ jobs:
     # check == false at the job level
     job1:
         name: "Job 1"
-        if: "false && echo 1"
+        if: ${{ false }}
         steps:
             - run: echo 'This will not be printed'
 
     # check == true at the job level
     job2:
         name: "Job 2"
-        if: "true && echo 1"
+        if: ${{ true }}
         steps:
             - run: echo 'This is Job 2'
 
@@ -199,7 +199,7 @@ jobs:
     job4:
         name: "Job 4"
         steps:
-            - if: "true && echo 1"
+            - if: ${{ true }}
               shell: python
               run: |
                 print("This is Job 4")
@@ -208,7 +208,7 @@ jobs:
     job5:
         name: "Job 5"
         steps:
-            - if: "false && echo 1"
+            - if: ${{ false }}
               shell: python
               run: |
                 print("This will not be printed")
