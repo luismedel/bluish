@@ -1,9 +1,10 @@
 import re
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import lark
 
 from bluish import context
+from bluish.redacted_string import RedactedString
 
 SENSITIVE_LITERALS = ("password", "secret", "token")
 
@@ -50,8 +51,9 @@ EXPRESSION_GRAMMAR = r"""
 
     VARIABLE: /[a-zA-Z_.][a-zA-Z0-9_.]*/
     NUMBER: /[0-9]+(\.[0-9]+)?/
+    STRING: ESCAPED_STRING | /'[^']*'/ | /"[^"]*"/
 
-    %import common.ESCAPED_STRING -> STRING
+    %import common.ESCAPED_STRING
     %import common.WS
 
     %ignore WS
@@ -67,26 +69,50 @@ class ExprTransformer(lark.Transformer):
     def number(self, value: str) -> float:
         return float(value)
 
+    def str(self, value: str) -> str:
+        if isinstance(value, RedactedString):
+            return RedactedString(value[1:-1], value.redacted_value[1:-1])
+        elif isinstance(value, str):
+            return value[1:-1]
+        else:
+            return str(value)
+
     def expr(self, expr: Any) -> Any:
         return expr
+    
+    def to_number(self, value: Any) -> Any:
+        if isinstance(value, (int, float)):
+            return value
+        elif value.isnumeric():
+            return int(value)
+        else:
+            return float(value)
 
-    def add(self, a: float, b: float) -> float:
-        return a + b
+    def add(self, a: Any, b: Any) -> Any:
+        if isinstance(a, (int, float)) or isinstance(b, (int, float)):
+            return a + b
+        elif isinstance(a, str) and isinstance(b, str):
+            if isinstance(a, RedactedString) or isinstance(b, RedactedString):
+                return self.concat(a, b)
+            else:
+                return a + b
+        else:
+            return float(a) + float(b)
 
-    def sub(self, a: float, b: float) -> float:
-        return a - b
+    def sub(self, a: Any, b: Any) -> float:
+        return float(a) - float(b)
 
-    def mul(self, a: float, b: float) -> float:
-        return a * b
+    def mul(self, a: Any, b: Any) -> float:
+        return float(a) * float(b)
 
-    def div(self, a: float, b: float) -> float:
-        return a / b
+    def div(self, a: Any, b: Any) -> float:
+        return float(a) / float(b)
 
-    def mod(self, a: float, b: float) -> float:
-        return a % b
+    def mod(self, a: Any, b: Any) -> float:
+        return float(a) % float(b)
 
-    def neg(self, a: float) -> float:
-        return -a
+    def neg(self, a: Any) -> float:
+        return -float(a)
 
     def eq(self, a: Any, b: Any) -> bool:
         return a == b
@@ -121,13 +147,25 @@ class ExprTransformer(lark.Transformer):
         elif name == "false":
             return False
         else:
-            return self.context.get_value(name)
+            return self.context.get_value(str(name))
+
+    @staticmethod
+    def concat(a: Any, b: Any) -> Any:
+        if a is None:
+            return b
+        if b is None:
+            return a
+
+        result = RedactedString(str(a) + str(b))
+        result.redacted_value = a.redacted_value if isinstance(a, RedactedString) else str(a)
+        result.redacted_value += b.redacted_value if isinstance(b, RedactedString) else str(b)
+        return result
 
 
-def create_parser(ctx: context.ContextNode) -> Callable[[str, bool], Any]:
+def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
     """Create a parser with the given context.
 
-    >>> ctx = context.ContextNode(None, {})
+    >>> ctx = context.WorkflowContext({"secrets": {"password": "1234"}})
     >>> ctx.set_value("var.x", 10)
     >>> parse = create_parser(ctx)
     >>> parse("${{ x + 10 }}")
@@ -160,7 +198,7 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str, bool], Any]:
     False
     >>> ctx.set_value("var.x", 10)
     >>> parse("${{ x }}")
-    10
+    10.0
     >>> ctx.set_value("var.x", 10.0)
     >>> parse("${{ x }}")
     10.0
@@ -173,29 +211,41 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str, bool], Any]:
     >>> ctx.set_value("var.x", 1)
     >>> parse("one == ${{ x }}")
     'one == 1'
+    >>> parse("one == ${{ x }}!!")
+    'one == 1!!'
+    >>> parse('${{ "a" + "b" }}')
+    'ab'
+    >>> parse('${{ "a" + secrets.password }}')
+    'a1234'
+    >>> parse('${{ "a" + secrets.password }}').redacted_value
+    'a********'
+    >>> parse('${{ secrets.password }}')
+    '1234'
     """
 
     parser = lark.Lark(
         EXPRESSION_GRAMMAR, parser="lalr", transformer=ExprTransformer(ctx)
     )
 
-    def parse(value: str, redact_secrets: bool = False) -> Any:
-        def replace(m) -> str:
-            group1 = m.group(1)
-            if redact_secrets and any(
-                s for s in SENSITIVE_LITERALS if s in group1.lower()
-            ):
-                return "********"
-            return str(parser.parse(group1))
+    def parse(value: str) -> Any:
+        result: Any = None
 
-        result = re.sub(EXPRESSION_REGEX, replace, value)
-        if result in ("True", "False"):
-            return result == "True"
-        elif result.isdigit():
-            return int(result)
-        elif result.replace(".", "", 1).isdigit():
-            return float(result)
-        else:
-            return result
+        offset = 0
+
+        for m in re.finditer(EXPRESSION_REGEX, value):
+            previous_chunk = value[offset:m.start()]
+            parse_result = parser.parse(m.group(1))
+            offset = m.end()
+
+            if previous_chunk:
+                result = ExprTransformer.concat(result, previous_chunk)
+
+            result = ExprTransformer.concat(result, parse_result)
+
+        last_chunk = value[offset:]
+        if last_chunk:
+            result = ExprTransformer.concat(result, last_chunk)
+
+        return result
 
     return parse

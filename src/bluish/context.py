@@ -67,14 +67,14 @@ class ContextNode:
         self.failed = False
         self.status: ExecutionStatus = ExecutionStatus.PENDING
 
-        self._expression_parser: Callable[[str, bool], Any] | None = None
+        self._expression_parser: Callable[[str], Any] | None = None
 
     @property
     def display_name(self) -> str:
         return self.attrs.name or self.id
 
     @property
-    def expression_parser(self) -> Callable[[str, bool], Any]:
+    def expression_parser(self) -> Callable[[str], Any]:
         # HACK This doesn't make me happy
         from bluish.expressions import create_parser
 
@@ -512,7 +512,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None
     elif root == "secrets":
         wf = get_workflow(ctx)
         if wf and varname in wf.secrets:
-            return prepare_value(wf.secrets[varname])
+            return prepare_value(RedactedString(cast(str, wf.secrets[varname]), "********"))
     elif root == "jobs":
         wf = get_workflow(ctx)
         if wf:
@@ -547,7 +547,9 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None
         if not step:
             raise ValueError("Step reference not found")
         if varname in step.inputs:
-            return prepare_value(step.inputs[varname])
+            value = RedactedString(step.inputs[varname])
+            value.redacted_value = "********"
+            return prepare_value(value)
     elif root == "outputs":
         node = get_step(ctx) or get_job(ctx)
         if node and varname in node.outputs:
@@ -630,14 +632,10 @@ def _expand_expr(
         else:
             return value  # type: ignore
 
-    if "$" not in value:
+    if "${{" not in value:
         return value
 
-    result = ctx.expression_parser(value, False)
-    if any(s in value for s in SENSITIVE_LITERALS):
-        result = RedactedString(result)
-        result.redacted_value = ctx.expression_parser(value, True)
-    return result
+    return ctx.expression_parser(value)
 
 
 def can_dispatch(context: StepContext | JobContext) -> bool:
@@ -650,9 +648,7 @@ def can_dispatch(context: StepContext | JobContext) -> bool:
     elif not isinstance(context.attrs._if, str):
         raise ValueError("Condition must be a bool or a string")
 
-    result = context.expand_expr(context.attrs._if)
-    print(f"Result: {result}")
-    return bool(result)
+    return bool(context.expand_expr(context.attrs._if))
 
 
 def _read_file(ctx: ContextNode, file_path: str) -> bytes:
