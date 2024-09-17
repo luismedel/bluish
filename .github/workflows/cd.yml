@@ -1,6 +1,6 @@
 name: Fire the publish workflow using Bluish
 
-on: [push]
+on: [push, workflow_dispatch]
 
 jobs:
   build:
