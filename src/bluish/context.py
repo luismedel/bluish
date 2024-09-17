@@ -512,7 +512,9 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None
     elif root == "secrets":
         wf = get_workflow(ctx)
         if wf and varname in wf.secrets:
-            return prepare_value(RedactedString(cast(str, wf.secrets[varname]), "********"))
+            return prepare_value(
+                RedactedString(cast(str, wf.secrets[varname]), "********")
+            )
     elif root == "jobs":
         wf = get_workflow(ctx)
         if wf:
@@ -621,9 +623,6 @@ TExpandValue = str | dict[str, Any] | list[str]
 def _expand_expr(
     ctx: ContextNode, value: TExpandValue | None, _depth: int = 1
 ) -> TExpandValue:
-    # HACK This doesn't make me happy
-    from bluish.expressions import SENSITIVE_LITERALS
-
     if not isinstance(value, str):
         if isinstance(value, dict):
             return {k: _expand_expr(ctx, v, _depth=_depth) for k, v in value.items()}

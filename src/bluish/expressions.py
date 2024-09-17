@@ -1,5 +1,5 @@
 import re
-from typing import Any, Callable, cast
+from typing import Any, Callable
 
 import lark
 
@@ -79,7 +79,7 @@ class ExprTransformer(lark.Transformer):
 
     def expr(self, expr: Any) -> Any:
         return expr
-    
+
     def to_number(self, value: Any) -> Any:
         if isinstance(value, (int, float)):
             return value
@@ -157,8 +157,12 @@ class ExprTransformer(lark.Transformer):
             return a
 
         result = RedactedString(str(a) + str(b))
-        result.redacted_value = a.redacted_value if isinstance(a, RedactedString) else str(a)
-        result.redacted_value += b.redacted_value if isinstance(b, RedactedString) else str(b)
+        result.redacted_value = (
+            a.redacted_value if isinstance(a, RedactedString) else str(a)
+        )
+        result.redacted_value += (
+            b.redacted_value if isinstance(b, RedactedString) else str(b)
+        )
         return result
 
 
@@ -233,7 +237,7 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
         offset = 0
 
         for m in re.finditer(EXPRESSION_REGEX, value):
-            previous_chunk = value[offset:m.start()]
+            previous_chunk = value[offset : m.start()]
             parse_result = parser.parse(m.group(1))
             offset = m.end()
 
