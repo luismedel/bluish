@@ -1,4 +1,4 @@
-name: Fire the publish workflow
+name: Fire the publish workflow using Bluish
 
 on: [push]
 
