@@ -62,7 +62,7 @@ def _get_docker_pid(host: str) -> str:
     return docker_pid
 
 
-def prepare_host(opts: str | dict[str, Any]| None) -> dict[str, Any]:
+def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
     """Prepares a host for running commands."""
 
     host = opts.get("host", None) if isinstance(opts, dict) else opts
@@ -77,14 +77,9 @@ def prepare_host(opts: str | dict[str, Any]| None) -> dict[str, Any]:
         docker_pid = _get_docker_pid(host)
         if not docker_pid:
             raise ValueError(f"Could not find container with name or id {host}")
-        return {
-            "host": f"docker://{docker_pid}"
-        }
+        return {"host": f"docker://{docker_pid}"}
     elif host.startswith("ssh://"):
-        return {
-            "host": host,
-            **(opts if isinstance(opts, dict) else {})
-        }
+        return {"host": host, **(opts if isinstance(opts, dict) else {})}
     else:
         raise ValueError(f"Unsupported host: {host}")
 
@@ -196,33 +191,33 @@ def run(
     return result
 
 
-def get_flavor(host: str | None) -> str:
+def get_flavor(host_opts: dict[str, Any]) -> str:
     ids = {}
-    for line in run("cat /etc/os-release | grep ^ID", host).stdout.splitlines():
+    for line in run("cat /etc/os-release | grep ^ID", host_opts).stdout.splitlines():
         key, value = line.split("=", maxsplit=1)
         ids[key] = value.strip().strip('"')
     return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
 
 
 def install_package(
-    host: str | None, packages: list[str], flavor: str = "auto"
+    host_opts: dict[str, Any], packages: list[str], flavor: str = "auto"
 ) -> ProcessResult:
     """Installs a package on a host."""
 
     package_list = " ".join(packages)
 
-    flavor = get_flavor(host) if flavor == "auto" else flavor
+    flavor = get_flavor(host_opts) if flavor == "auto" else flavor
     if flavor in ("alpine", "alpine-edge"):
-        return run(f"apk update && apk add {package_list}", host)
+        return run(f"apk update && apk add {package_list}", host_opts)
     elif flavor in ("debian", "ubuntu"):
-        return run(f"apt-get update && apt-get install -y {package_list}", host)
+        return run(f"apt-get update && apt-get install -y {package_list}", host_opts)
     elif flavor in ("fedora", "centos", "rhel", "rocky"):
-        return run(f"dnf install -y {package_list}", host)
+        return run(f"dnf install -y {package_list}", host_opts)
     elif flavor in ("arch"):
-        return run(f"pacman -S --noconfirm {package_list}", host)
+        return run(f"pacman -S --noconfirm {package_list}", host_opts)
     elif flavor in ("suse", "opensuse", "opensuse-leap", "opensuse-tumbleweed"):
-        return run(f"zypper install -y {package_list}", host)
+        return run(f"zypper install -y {package_list}", host_opts)
     elif flavor in ("gentoo"):
-        return run(f"emerge -v {package_list}", host)
+        return run(f"emerge -v {package_list}", host_opts)
     else:
         raise ValueError(f"Unsupported flavor: {flavor}")

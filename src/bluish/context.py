@@ -91,9 +91,7 @@ class ContextNode:
         else:
             return value
 
-    def get_value(
-        self, name: str, default: Any = None, raw: bool = False
-    ) -> str | None:
+    def get_value(self, name: str, default: Any = None, raw: bool = False) -> Any:
         value = _try_get_value(self, name, raw=raw)
         if value is None and default is None:
             raise ValueError(f"Variable {name} not found")
@@ -256,7 +254,9 @@ class JobContext(ContextNode):
         info(f"** Running job '{self.display_name}'")
 
         if self.attrs.runs_on:
-            self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
+            self.runs_on_host = process.prepare_host(
+                self.expand_expr(self.attrs.runs_on)
+            )
 
         try:
             if self.matrix:
@@ -468,11 +468,11 @@ def get_workflow(ctx: "ContextNode") -> WorkflowContext | None:
 ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
 
 
-def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None:
-    def prepare_value(value: str | None) -> str | None:
+def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
+    def prepare_value(value: Any) -> Any:
         if value is None:
             return None
-        elif raw:
+        elif raw or not isinstance(value, str):
             return value
         else:
             return cast(str, _expand_expr(ctx, value))
@@ -490,10 +490,16 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> str | None
     root, varname = name.split(".", maxsplit=1)
 
     if root == "":
-        if varname == "result":
+        if varname == "stdout":
             return prepare_value(
                 "" if ctx.result is None else ctx.result.stdout.strip()
             )
+        elif varname == "stderr":
+            return prepare_value(
+                "" if ctx.result is None else ctx.result.stderr.strip()
+            )
+        elif varname == "returncode":
+            return prepare_value(0 if ctx.result is None else ctx.result.returncode)
     elif root in ("env", "var"):
         varname = name[4:]
         current: ContextNode | None = ctx

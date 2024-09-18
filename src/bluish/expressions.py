@@ -14,9 +14,11 @@ EXPRESSION_GRAMMAR = r"""
     ?start: expression
 
     ?expression: or_expr
+    ?ternary_expr: or_expr "?" or_expr ":" or_expr -> ternary
 
     ?or_expr: and_expr
             | or_expr "||" and_expr -> or_
+            | ternary_expr
 
     ?and_expr: equality_expr
              | and_expr "&&" equality_expr -> and_
@@ -60,14 +62,50 @@ EXPRESSION_GRAMMAR = r"""
 """
 
 
+def to_number(value: Any) -> Any:
+    if isinstance(value, (int, float)):
+        return value
+    elif value.isnumeric():
+        return int(value)
+    elif value.replace(".", "").isnumeric():
+        return float(value)
+    else:
+        raise ValueError(f"Invalid number: {value}")
+
+
+def to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    elif value.isnumeric() or value.replace(".", "").isnumeric():
+        return float(value) != 0
+    else:
+        return bool(value)
+
+
+def concat(a: Any, b: Any) -> Any:
+    if a is None:
+        return b
+    if b is None:
+        return a
+
+    result = RedactedString(str(a) + str(b))
+    result.redacted_value = (
+        a.redacted_value if isinstance(a, RedactedString) else str(a)
+    )
+    result.redacted_value += (
+        b.redacted_value if isinstance(b, RedactedString) else str(b)
+    )
+    return result
+
+
 @lark.v_args(inline=True)  # Affects the signatures of the methods
 class ExprTransformer(lark.Transformer):
     def __init__(self, ctx: context.ContextNode):
         self.expr_depth: int = 0
         self.context = ctx
 
-    def number(self, value: str) -> float:
-        return float(value)
+    def number(self, value: str) -> int | float:
+        return to_number(value)
 
     def str(self, value: str) -> str:
         if isinstance(value, RedactedString):
@@ -80,39 +118,26 @@ class ExprTransformer(lark.Transformer):
     def expr(self, expr: Any) -> Any:
         return expr
 
-    def to_number(self, value: Any) -> Any:
-        if isinstance(value, (int, float)):
-            return value
-        elif value.isnumeric():
-            return int(value)
-        else:
-            return float(value)
-
     def add(self, a: Any, b: Any) -> Any:
         if isinstance(a, (int, float)) or isinstance(b, (int, float)):
             return a + b
-        elif isinstance(a, str) and isinstance(b, str):
-            if isinstance(a, RedactedString) or isinstance(b, RedactedString):
-                return self.concat(a, b)
-            else:
-                return a + b
         else:
-            return float(a) + float(b)
+            return concat(a, b)
 
-    def sub(self, a: Any, b: Any) -> float:
-        return float(a) - float(b)
+    def sub(self, a: int | float, b: int | float) -> int | float:
+        return to_number(a) - to_number(b)
 
-    def mul(self, a: Any, b: Any) -> float:
-        return float(a) * float(b)
+    def mul(self, a: int | float, b: int | float) -> int | float:
+        return to_number(a) * to_number(b)
 
-    def div(self, a: Any, b: Any) -> float:
-        return float(a) / float(b)
+    def div(self, a: int | float, b: int | float) -> int | float:
+        return to_number(a) / to_number(b)
 
-    def mod(self, a: Any, b: Any) -> float:
-        return float(a) % float(b)
+    def mod(self, a: int | float, b: int | float) -> int | float:
+        return to_number(a) % to_number(b)
 
-    def neg(self, a: Any) -> float:
-        return -float(a)
+    def neg(self, a: int | float) -> int | float:
+        return -to_number(a)
 
     def eq(self, a: Any, b: Any) -> bool:
         return a == b
@@ -133,13 +158,13 @@ class ExprTransformer(lark.Transformer):
         return a >= b
 
     def and_(self, a: Any, b: Any) -> bool:
-        return bool(a) and bool(b)
+        return to_bool(a) and to_bool(b)
 
     def or_(self, a: Any, b: Any) -> bool:
-        return bool(a) or bool(b)
+        return to_bool(a) or to_bool(b)
 
     def not_(self, a: Any) -> bool:
-        return not bool(a)
+        return not to_bool(a)
 
     def var(self, name) -> Any:
         if name == "true":
@@ -149,21 +174,8 @@ class ExprTransformer(lark.Transformer):
         else:
             return self.context.get_value(str(name))
 
-    @staticmethod
-    def concat(a: Any, b: Any) -> Any:
-        if a is None:
-            return b
-        if b is None:
-            return a
-
-        result = RedactedString(str(a) + str(b))
-        result.redacted_value = (
-            a.redacted_value if isinstance(a, RedactedString) else str(a)
-        )
-        result.redacted_value += (
-            b.redacted_value if isinstance(b, RedactedString) else str(b)
-        )
-        return result
+    def ternary(self, condition: Any, true_expr: Any, false_expr: Any) -> Any:
+        return true_expr if to_bool(condition) else false_expr
 
 
 def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
@@ -242,13 +254,13 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
             offset = m.end()
 
             if previous_chunk:
-                result = ExprTransformer.concat(result, previous_chunk)
+                result = concat(result, previous_chunk)
 
-            result = ExprTransformer.concat(result, parse_result)
+            result = concat(result, parse_result)
 
         last_chunk = value[offset:]
         if last_chunk:
-            result = ExprTransformer.concat(result, last_chunk)
+            result = concat(result, last_chunk)
 
         return result
 
