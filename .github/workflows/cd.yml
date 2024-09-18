@@ -8,6 +8,5 @@ jobs:
     container: luismedel/bluish-alpine:latest
 
     steps:
-      - uses: actions/checkout@v2
       - run: |
           blu publish
