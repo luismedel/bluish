@@ -387,7 +387,7 @@ def test_expansion_with_ambiguity() -> None:
     wf = create_workflow("""
 var:
     test_result:
-    result: "No"
+    stdout: "No"
 
 jobs:
     expansion:
@@ -395,20 +395,20 @@ jobs:
         steps:
             - run: echo 'Yes!'
               set:
-                workflow.var.test_result: ${{ result }}
+                workflow.var.test_result: ${{ stdout }}
 """)
     try:
         _ = wf.dispatch()
         raise AssertionError("Ambiguity not detected")
     except ValueError as ex:
-        assert str(ex) == "Ambiguous value reference: result"
+        assert str(ex) == "Ambiguous value reference: stdout"
 
 
 def test_expansion_with_no_ambiguity() -> None:
     wf = create_workflow("""
 var:
     test_result:
-    result: "No"
+    stdout: "No"
 
 jobs:
     expansion:
@@ -416,7 +416,7 @@ jobs:
         steps:
             - run: echo 'Yes!'
               set:
-                workflow.var.test_result: ${{ .result }}
+                workflow.var.test_result: ${{ .stdout }}
 """)
     _ = wf.dispatch()
     assert wf.get_value("test_result") == "Yes!"
@@ -468,6 +468,39 @@ jobs:
     assert wf.jobs["test_job"].get_value("job.var.VALUE") == 2
 
 
+def test_expressions() -> None:
+    wf = create_workflow("""
+var:
+    VALUE: 2
+
+jobs:
+    test_job:
+        steps:
+            - run: echo 'VALUE == ${{ var.VALUE }}'
+            - run: echo 'VALUE == ${{ var.VALUE + 1 }}'
+            - run: echo 'VALUE == ${{ var.VALUE + 1.0 }}'
+            - run: echo 'VALUE == ${{ var.VALUE + 1.5 }}'
+            - run: |
+                echo '${{ var.VALUE > 1 ? 'greater' : 'not greater' }}'
+            - run: |
+                echo '${{ var.VALUE > 3 ? 'greater' : 'not greater' }}'
+            - run: |
+                echo '${{ true ? 1 : 0 }}'
+            - run: |
+                echo '${{ 'aaa' == 'aaa' ? 1 : 0 }}'
+""")
+    _ = wf.dispatch()
+
+    assert wf.get_value("jobs.test_job.steps.step_1.stdout") == "VALUE == 2"
+    assert wf.get_value("jobs.test_job.steps.step_2.stdout") == "VALUE == 3"
+    assert wf.get_value("jobs.test_job.steps.step_3.stdout") == "VALUE == 3.0"
+    assert wf.get_value("jobs.test_job.steps.step_4.stdout") == "VALUE == 3.5"
+    assert wf.get_value("jobs.test_job.steps.step_5.stdout") == "greater"
+    assert wf.get_value("jobs.test_job.steps.step_6.stdout") == "not greater"
+    assert wf.get_value("jobs.test_job.steps.step_7.stdout") == "1"
+    assert wf.get_value("jobs.test_job.steps.step_8.stdout") == "1"
+
+
 def test_secrets_are_redacted_in_log(caplog) -> None:
     caplog.set_level(logging.DEBUG)
     
@@ -488,7 +521,7 @@ jobs:
 """)
     _ = wf.dispatch()
 
-    assert wf.get_value("jobs.test_job.steps.step_1.result") == "secret is = hello\nvar is = world"
+    assert wf.get_value("jobs.test_job.steps.step_1.stdout") == "secret is = hello\nvar is = world"
     assert "secret is = ***" in caplog.text
     assert "var is = world" in caplog.text
 
@@ -508,7 +541,7 @@ jobs:
               set:
                   workflow.var.VALUE: 2
                   job.var.COOL_YEAR: 1980
-                  jobs.test_job.var.VOUTPUT: ${{ .result }}
+                  jobs.test_job.var.VOUTPUT: ${{ .stdout }}
 """)
     _ = wf.dispatch()
 

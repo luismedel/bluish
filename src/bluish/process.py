@@ -1,7 +1,7 @@
 import contextlib
 import logging
 import subprocess
-from typing import Callable
+from typing import Any, Callable
 
 from bluish.logging import debug
 
@@ -62,23 +62,36 @@ def _get_docker_pid(host: str) -> str:
     return docker_pid
 
 
-def prepare_host(host: str | None) -> str | None:
+def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
     """Prepares a host for running commands."""
 
-    if host and host.startswith("docker://"):
+    host = opts.get("host", None) if isinstance(opts, dict) else opts
+    if not host:
+        return {}
+
+    if not isinstance(host, str):
+        raise ValueError(f"Invalid host: {host}")
+
+    if host.startswith("docker://"):
         host = host[9:]
         docker_pid = _get_docker_pid(host)
         if not docker_pid:
             raise ValueError(f"Could not find container with name or id {host}")
-        return f"docker://{docker_pid}"
-    return host
+        return {"host": f"docker://{docker_pid}"}
+    elif host.startswith("ssh://"):
+        return {"host": host, **(opts if isinstance(opts, dict) else {})}
+    else:
+        raise ValueError(f"Unsupported host: {host}")
 
 
-def cleanup_host(host: str | None) -> None:
+def cleanup_host(host_opts: dict[str, Any] | None) -> None:
     """Stops and removes a container if it was started by the process module."""
 
+    host = host_opts.get("host", None) if isinstance(host_opts, dict) else host_opts
     if not host:
         return
+
+    assert isinstance(host, str)
 
     if host.startswith("docker://"):
         host = host[9:]
@@ -139,7 +152,7 @@ def capture_subprocess_output(
 
 def run(
     command: str,
-    host: str | None = None,
+    host_opts: dict[str, Any] | None = None,
     stdout_handler: Callable[[str], None] | None = None,
     stderr_handler: Callable[[str], None] | None = None,
 ) -> ProcessResult:
@@ -155,12 +168,19 @@ def run(
 
     command = _escape_command(command)
 
-    if host and host.startswith("ssh://"):
-        ssh_host = host[6:]
-        command = f"ssh {ssh_host} -- '{command}'"
-    elif host and host.startswith("docker://"):
-        docker_pid = host[9:]
-        command = f"docker exec -i {docker_pid} sh -euc '{command}'"
+    host_opts = host_opts if isinstance(host_opts, dict) else {"host": host_opts}
+    host = host_opts.get("host", None)
+
+    if host:
+        if host.startswith("ssh://"):
+            ssh_host = host[6:]
+            opts = ""
+            if "identity_file" in host_opts:
+                opts += f"-i {host_opts['identity_file']}"
+            command = f"ssh {opts} {ssh_host} -- '{command}'"
+        elif host.startswith("docker://"):
+            docker_pid = host[9:]
+            command = f"docker exec -i {docker_pid} sh -euc '{command}'"
 
     cmd_result = capture_subprocess_output(command, stdout_handler)
 
@@ -171,33 +191,33 @@ def run(
     return result
 
 
-def get_flavor(host: str | None) -> str:
+def get_flavor(host_opts: dict[str, Any]) -> str:
     ids = {}
-    for line in run("cat /etc/os-release | grep ^ID", host).stdout.splitlines():
+    for line in run("cat /etc/os-release | grep ^ID", host_opts).stdout.splitlines():
         key, value = line.split("=", maxsplit=1)
         ids[key] = value.strip().strip('"')
     return ids.get("ID_LIKE", ids.get("ID", "Unknown"))
 
 
 def install_package(
-    host: str | None, packages: list[str], flavor: str = "auto"
+    host_opts: dict[str, Any], packages: list[str], flavor: str = "auto"
 ) -> ProcessResult:
     """Installs a package on a host."""
 
     package_list = " ".join(packages)
 
-    flavor = get_flavor(host) if flavor == "auto" else flavor
+    flavor = get_flavor(host_opts) if flavor == "auto" else flavor
     if flavor in ("alpine", "alpine-edge"):
-        return run(f"apk update && apk add {package_list}", host)
+        return run(f"apk update && apk add {package_list}", host_opts)
     elif flavor in ("debian", "ubuntu"):
-        return run(f"apt-get update && apt-get install -y {package_list}", host)
+        return run(f"apt-get update && apt-get install -y {package_list}", host_opts)
     elif flavor in ("fedora", "centos", "rhel", "rocky"):
-        return run(f"dnf install -y {package_list}", host)
+        return run(f"dnf install -y {package_list}", host_opts)
     elif flavor in ("arch"):
-        return run(f"pacman -S --noconfirm {package_list}", host)
+        return run(f"pacman -S --noconfirm {package_list}", host_opts)
     elif flavor in ("suse", "opensuse", "opensuse-leap", "opensuse-tumbleweed"):
-        return run(f"zypper install -y {package_list}", host)
+        return run(f"zypper install -y {package_list}", host_opts)
     elif flavor in ("gentoo"):
-        return run(f"emerge -v {package_list}", host)
+        return run(f"emerge -v {package_list}", host_opts)
     else:
         raise ValueError(f"Unsupported flavor: {flavor}")
