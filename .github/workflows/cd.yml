@@ -11,5 +11,6 @@ jobs:
       - run: |
           python3 -m venv .e
           . .e/bin/activate
+          pip install --upgrade pip
           pip install bluish
           blu publish
