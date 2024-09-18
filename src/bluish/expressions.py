@@ -258,7 +258,9 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
                 if e.orig_exc:
                     raise e.orig_exc
                 else:
-                    raise RuntimeError(f"Error parsing expression: {m.group(1)}: {str(e)}")
+                    raise RuntimeError(
+                        f"Error parsing expression: {m.group(1)}: {str(e)}"
+                    )
 
             offset = m.end()
 
