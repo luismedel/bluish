@@ -4,7 +4,9 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: luismedel/bluish-alpine:latest
+    runs-on: ubuntu-latest
+    container: luismedel/bluish-alpine:latest
+
     steps:
     - run: |
         blu publish
