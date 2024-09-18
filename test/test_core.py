@@ -1,6 +1,6 @@
 
 import logging
-import tempfile
+from io import FileIO
 from test.utils import create_workflow
 
 import pytest
@@ -57,9 +57,10 @@ jobs:
     assert wf.jobs["job2"].result.stdout == ""
 
 
-def test_matrix() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        wf = create_workflow(f"""
+def test_matrix(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+
+    wf = create_workflow(f"""
 jobs:
     test_job:
         name: "Job 1"
@@ -69,11 +70,12 @@ jobs:
             color: [red, blue]
         steps:
             - run: |
-                echo ${{{{ matrix.os }}}}-${{{{ matrix.version }}}}-${{{{ matrix.color }}}} >> {temp_file.name}
+                echo ${{{{ matrix.os }}}}-${{{{ matrix.version }}}}-${{{{ matrix.color }}}} >> {filename}
 """)
-        _ = wf.dispatch()
-        output = temp_file.read().decode()
-        assert output == """ubuntu-18.04-red
+    _ = wf.dispatch()
+    output = temp_file.read().decode()
+
+    assert output == """ubuntu-18.04-red
 ubuntu-18.04-blue
 ubuntu-20.04-red
 ubuntu-20.04-blue
@@ -584,9 +586,10 @@ jobs:
     assert wf.jobs["test_job_2"].steps["step-1"].result.stdout == "Hello World! :-("
 
 
-def test_expand_template() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        wf = create_workflow(f"""
+def test_expand_template(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+
+    wf = create_workflow(f"""
 var:
     hero: "Don Quijote"
 
@@ -615,12 +618,11 @@ jobs:
                       Quejana. Pero esto importa poco a nuestro cuento; basta que en la narración
                       dél no se salga un punto de la verdad.
                       Hello, ${{{{ hero }}}}!
-                  output_file: {temp_file.name}
+                  output_file: {filename}
     """)
-        _ = wf.dispatch()
-
-        assert wf.jobs["expand_template"].result.stdout.endswith("Hello, Don Quijote!\n")
-        assert run(f"tail -n1 {temp_file.name}").stdout == "Hello, Don Quijote!"
+    _ = wf.dispatch()
+    assert run(f"tail -n1 {filename}").stdout == "Hello, Don Quijote!"
+    assert wf.jobs["expand_template"].result.stdout.endswith("Hello, Don Quijote!\n")
 
 
 def test_capture() -> None:
@@ -694,32 +696,36 @@ jobs:
 
 
 @pytest.mark.docker
-def test_docker_file_upload() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        temp_file.write(b"Hello, World!")
-        temp_file.flush()
-        wf = create_workflow(f"""
+def test_docker_file_upload(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+
+    temp_file.write(b"Hello, World!")
+    temp_file.flush()
+
+    wf = create_workflow(f"""
 jobs:
     file_upload:
         runs_on: docker://alpine:latest
         steps:
             - uses: core/upload-file
               with:
-                  source_file: {temp_file.name}
+                  source_file: {filename}
                   destination_file: /tmp/hello.txt
             - run: cat /tmp/hello.txt
     """)
-        _ = wf.dispatch()
+    _ = wf.dispatch()
+
     assert wf.jobs["file_upload"].result.stdout == "Hello, World!"
 
 
 @pytest.mark.docker
-def test_docker_file_download() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        temp_file.write(b"Hello, World!")
-        temp_file.flush()
+def test_docker_file_download(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+    
+    temp_file.write(b"Hello, World!")
+    temp_file.flush()
 
-        wf = create_workflow(f"""
+    wf = create_workflow(f"""
 jobs:
     file_download:
         runs_on: docker://alpine:latest
@@ -729,21 +735,23 @@ jobs:
             - uses: core/download-file
               with:
                   source_file: /tmp/hello.txt
-                  destination_file: {temp_file.name}
+                  destination_file: {filename}
     """)
-        _ = wf.dispatch()
+    _ = wf.dispatch()
 
-        with open(temp_file.name, "r") as f:
-            assert f.read().strip() == "Hello, World!"
+    with open(temp_file.name, "r") as f:
+        file_contents = f.read().strip()
+    assert file_contents == "Hello, World!"
 
 
 @pytest.mark.docker
-def test_docker_file_download_failed() -> None:
-    with tempfile.NamedTemporaryFile() as temp_file:
-        temp_file.write(b"Hello, World!")
-        temp_file.flush()
+def test_docker_file_download_failed(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
 
-        wf = create_workflow(f"""
+    temp_file.write(b"Hello, World!")
+    temp_file.flush()
+
+    wf = create_workflow(f"""
 jobs:
     test_job:
         runs_on: docker://alpine:latest
@@ -751,12 +759,12 @@ jobs:
             - uses: core/download-file
               with:
                   source_file: /tmp/hello.txt
-                  destination_file: {temp_file.name}
+                  destination_file: {filename}
             - run: |
                   echo 'Hello, World!'
     """)
-        _ = wf.dispatch()
+    _ = wf.dispatch()
 
-        assert wf.jobs["test_job"].failed
-        assert wf.jobs["test_job"].steps["step_1"].failed
-        assert wf.get_value("jobs.test_job.steps.step_2.result") == ""
+    assert wf.jobs["test_job"].failed
+    assert wf.jobs["test_job"].steps["step_1"].failed
+    assert wf.get_value("jobs.test_job.steps.step_2.result") == ""

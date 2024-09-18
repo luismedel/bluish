@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import pytest
 from pytest import Config, Parser
 
@@ -20,3 +23,14 @@ def pytest_collection_modifyitems(config: Config, items: list) -> None:
     for item in items:
         if "docker" in item.keywords:
             item.add_marker(skip_docker)
+
+
+@pytest.fixture
+def temp_file():
+    with tempfile.NamedTemporaryFile(prefix="test_") as temp_file:
+        filename = temp_file.name
+        yield temp_file
+    try:
+        os.unlink(filename)
+    except FileNotFoundError:
+        pass
