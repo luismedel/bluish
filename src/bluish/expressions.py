@@ -62,6 +62,9 @@ EXPRESSION_GRAMMAR = r"""
 """
 
 
+_parser = lark.Lark(EXPRESSION_GRAMMAR, parser="lalr")
+
+
 def to_number(value: Any) -> Any:
     if isinstance(value, (int, float)):
         return value
@@ -98,8 +101,8 @@ def concat(a: Any, b: Any) -> Any:
     return result
 
 
-@lark.v_args(inline=True)  # Affects the signatures of the methods
-class ExprTransformer(lark.Transformer):
+@lark.v_args(inline=True)
+class ExprTransformer(lark.visitors.Transformer_InPlaceRecursive):
     def __init__(self, ctx: context.ContextNode):
         self.expr_depth: int = 0
         self.context = ctx
@@ -239,9 +242,7 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
     '1234'
     """
 
-    parser = lark.Lark(
-        EXPRESSION_GRAMMAR, parser="lalr", transformer=ExprTransformer(ctx)
-    )
+    transformer = ExprTransformer(ctx)
 
     def parse(value: str) -> Any:
         result: Any = None
@@ -250,7 +251,15 @@ def create_parser(ctx: context.ContextNode) -> Callable[[str], Any]:
 
         for m in re.finditer(EXPRESSION_REGEX, value):
             previous_chunk = value[offset : m.start()]
-            parse_result = parser.parse(m.group(1))
+            ast = _parser.parse(m.group(1))
+            try:
+                parse_result = transformer.transform(ast)
+            except lark.exceptions.VisitError as e:
+                if e.orig_exc:
+                    raise e.orig_exc
+                else:
+                    raise RuntimeError(f"Error parsing expression: {m.group(1)}: {str(e)}")
+
             offset = m.end()
 
             if previous_chunk:
