@@ -5,9 +5,11 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: luismedel/bluish-alpine:latest
 
     steps:
       - uses: actions/checkout@v2
       - run: |
+          python3 -m venv .e
+          . .e/bin/activate
+          pip install bluish
           blu publish
