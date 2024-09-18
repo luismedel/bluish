@@ -223,7 +223,7 @@ class JobContext(ContextNode):
         self.workflow = parent
         self.id = step_id
 
-        self.runs_on_host: str | None = None
+        self.runs_on_host: dict[str, Any] = {}
 
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("continue_on_error", False)
@@ -255,7 +255,8 @@ class JobContext(ContextNode):
 
         info(f"** Running job '{self.display_name}'")
 
-        self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
+        if self.attrs.runs_on:
+            self.runs_on_host = process.prepare_host(self.expand_expr(self.attrs.runs_on))
 
         try:
             if self.matrix:
@@ -370,7 +371,7 @@ class JobContext(ContextNode):
 
         run_result = process.run(
             command,
-            host=host,
+            host_opts=host,
             stdout_handler=stdout_handler if stream_output else None,
             stderr_handler=stderr_handler if stream_output else None,
         )
