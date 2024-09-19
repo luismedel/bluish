@@ -652,14 +652,14 @@ env:
     WORLD: "World!"
 
 jobs:
-    pass_env:
+    test_job:
         steps:
             - run: |
                   echo "Hello, $WORLD"
 """)
     _ = wf.dispatch()
 
-    assert wf.jobs["pass_env"].result.stdout == "Hello, World!"
+    assert wf.jobs["test_job"].result.stdout == "Hello, World!"
 
 
 @pytest.mark.docker

@@ -1,9 +1,11 @@
 import os
+from collections import ChainMap
 
 from bluish.action import action
 from bluish.context import StepContext
 from bluish.logging import error, info
 from bluish.process import ProcessResult
+from bluish.utils import safe_string
 
 
 @action("core/default-action", required_attrs=["run|set"])
@@ -13,6 +15,14 @@ def generic_run(step: StepContext) -> ProcessResult:
     Note: `set` dict is processed in the `@action` decorator. We require
     it here to enforce either run or set (or both) and avoid having empty
     actions."""
+
+    env = ChainMap(step.env, step.job.env, step.workflow.env)  # type: ignore
+
+    if env:
+        info("env:")
+        for k, v in env.items():
+            info(f"  {k}: {safe_string(v)}")
+
     if not step.attrs.run:
         return ProcessResult()
 
@@ -28,7 +38,7 @@ def generic_run(step: StepContext) -> ProcessResult:
     if echo_commands:
         info(command)
 
-    return step.job.exec(command, step, stream_output=echo_output)
+    return step.job.exec(command, step, env=env, stream_output=echo_output)  # type: ignore
 
 
 @action("core/expand-template", required_inputs=["input|input_file", "output_file"])

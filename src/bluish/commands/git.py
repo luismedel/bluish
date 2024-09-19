@@ -31,7 +31,11 @@ def cleanup_environment(step: StepContext) -> None:
     pass
 
 
-@action("git/checkout", required_inputs=["repository"])
+@action(
+    "git/checkout",
+    required_inputs=["repository"],
+    sensitive_inputs=["ssh_key_file", "password"],
+)
 def git_checkout(step: StepContext) -> ProcessResult:
     try:
         result = prepare_environment(step)
@@ -50,12 +54,22 @@ def git_checkout(step: StepContext) -> ProcessResult:
             options += f" --branch {inputs['branch']}"
 
         repository: str = inputs["repository"]
+        protocol, repository = repository.split("://", maxsplit=1)
         repo_name = os.path.basename(repository)
 
+        if step.attrs.token:
+            command = f"git clone {protocol}://{step.attrs.token}@{repository} {options} ./{repo_name}"
+        elif step.attrs.username and step.attrs.password:
+            command = f"git clone {protocol}://{step.attrs.username}:{step.attrs.password}@{repository} {options} ./{repo_name}"
+        elif step.attrs.ssh_key_file:
+            key_file = step.inputs["ssh_key_file"]
+            command = f"ssh-agent sh -c 'ssh-add {key_file}; git clone git@{repository} ./{repo_name}'"
+        else:
+            repository = f"{protocol}://{repository}"
+            command = f"git clone {repository} {options} ./{repo_name}"
+
         info(f"Cloning repository: {repository}...")
-        clone_result = run_git_command(
-            f"git clone {repository} {options} ./{repo_name}", step
-        )
+        clone_result = run_git_command(command, step)
         if clone_result.failed:
             error(f"Failed to clone repository: {clone_result.error}")
             return clone_result

@@ -12,7 +12,7 @@ from bluish import action, process
 from bluish.core import ExecutionStatus
 from bluish.logging import debug, error, info, warning
 from bluish.redacted_string import RedactedString
-from bluish.utils import decorate_for_log
+from bluish.utils import decorate_for_log, safe_string
 
 
 class CircularDependencyError(Exception):
@@ -70,8 +70,37 @@ class ContextNode:
         self._expression_parser: Callable[[str], Any] | None = None
 
     @property
+    def step(self) -> Optional["StepContext"]:
+        if isinstance(self, StepContext):
+            return cast("StepContext", self)
+        return None
+
+    @property
+    def job(self) -> Optional["JobContext"]:
+        if isinstance(self, JobContext):
+            return self
+        elif isinstance(self, StepContext):
+            return cast("JobContext", self.parent)
+        return None
+
+    @property
+    def workflow(self) -> Optional["WorkflowContext"]:
+        if isinstance(self, WorkflowContext):
+            return self
+        elif isinstance(self, JobContext):
+            return cast("WorkflowContext", self.parent)
+        elif isinstance(self, StepContext):
+            return cast("WorkflowContext", self.parent.parent)  # type: ignore
+        return None
+
+    @property
     def display_name(self) -> str:
-        return self.attrs.name or self.id
+        if self.attrs.name:
+            return self.attrs.name
+        elif self.attrs.uses:
+            return self.attrs.uses
+        else:
+            return self.id
 
     @property
     def expression_parser(self) -> Callable[[str], Any]:
@@ -212,13 +241,34 @@ class WorkflowContext(ContextNode):
             return job.dispatch()
 
 
-class JobContext(ContextNode):
+class InputOutputNode(ContextNode):
+    def __init__(self, parent: ContextNode, definition: dict[str, Any]):
+        super().__init__(parent, definition)
+
+        self.inputs: dict[str, Any] = {}
+        self.outputs: dict[str, Any] = {}
+
+        self.sensitive_inputs: set[str] = {"password", "token"}
+
+    def log_inputs(self) -> None:
+        if not self.attrs._with:
+            return
+        info("with:")
+        for k, v in self.attrs._with.items():
+            v = self.expand_expr(v)
+            self.inputs[k] = v
+            if k in self.sensitive_inputs:
+                info(f"  {k}: ********")
+            else:
+                info(f"  {k}: {safe_string(v)}")
+
+
+class JobContext(InputOutputNode):
     def __init__(
         self, parent: WorkflowContext, step_id: str, definition: dict[str, Any]
     ):
         super().__init__(parent, definition)
 
-        self.workflow = parent
         self.id = step_id
 
         self.runs_on_host: dict[str, Any] = {}
@@ -248,10 +298,14 @@ class JobContext(ContextNode):
                 step.id = step_id
             self.steps[step_id] = step
 
+    @property
+    def workflow(self) -> WorkflowContext:
+        return cast(WorkflowContext, self.parent)
+
     def dispatch(self) -> process.ProcessResult | None:
         self.status = ExecutionStatus.RUNNING
 
-        info(f"** Running job '{self.display_name}'")
+        info(f"** Run job '{self.display_name}'")
 
         if self.attrs.runs_on:
             self.runs_on_host = process.prepare_host(
@@ -297,6 +351,7 @@ class JobContext(ContextNode):
         self,
         command: str,
         context: ContextNode,
+        env: dict[str, str] | None = None,
         shell: str | None = None,
         stream_output: bool = False,
     ) -> process.ProcessResult:
@@ -319,16 +374,7 @@ class JobContext(ContextNode):
             )
             return touch_result
 
-        # Build the env map
-        env = {}
-
-        ctx: ContextNode | None = context
-        while ctx:
-            for k, v in ctx.env.items():
-                if k in env:
-                    continue
-                env[k] = ctx.expand_expr(v)
-            ctx = ctx.parent
+        env = env or {}
 
         if "BLUISH_OUTPUT" in env:
             warning(
@@ -364,7 +410,7 @@ class JobContext(ContextNode):
             command = f'cd "{working_dir}" && {command}'
 
         def stdout_handler(line: str) -> None:
-            info(decorate_for_log(line.rstrip(), " -> "))
+            info(decorate_for_log(line.rstrip(), "  > "))
 
         def stderr_handler(line: str) -> None:
             error(decorate_for_log(line.rstrip(), " ** "))
@@ -390,12 +436,9 @@ class JobContext(ContextNode):
         return run_result
 
 
-class StepContext(ContextNode):
+class StepContext(InputOutputNode):
     def __init__(self, parent: JobContext, definition: dict[str, Any]):
         super().__init__(parent, definition)
-
-        self.workflow = parent.workflow
-        self.job = parent
 
         self.attrs.ensure_property("name", "")
         self.attrs.ensure_property("uses", action.DEFAULT_ACTION)
@@ -404,15 +447,31 @@ class StepContext(ContextNode):
 
         self.id = self.attrs.id
 
-        self.inputs: dict[str, Any] = {}
-        self.outputs: dict[str, Any] = {}
+    @property
+    def job(self) -> JobContext:
+        return cast(JobContext, self.parent)
+
+    @property
+    def workflow(self) -> WorkflowContext:
+        return self.job.workflow
+
+    @property
+    def display_name(self) -> str:
+        if self.attrs.name:
+            return self.attrs.name
+        elif self.attrs.uses:
+            return self.attrs.uses
+        elif self.attrs.run:
+            return next(self.attrs.run.split("\n", maxsplit=1))
+        else:
+            return self.id
 
     def dispatch(self) -> process.ProcessResult | None:
-        info(f"* Running step '{self.display_name}'")
+        info(f"* Run step '{self.display_name}'")
 
         if not can_dispatch(self):
             self.status = ExecutionStatus.SKIPPED
-            info("Step skipped")
+            info(" >>> Skipped")
             return None
 
         self.status = ExecutionStatus.RUNNING
@@ -439,30 +498,6 @@ class VariableExpandError(Exception):
 
 
 EXPR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
-
-
-def get_step(ctx: "ContextNode") -> StepContext | None:
-    if isinstance(ctx, StepContext):
-        return ctx
-    return None
-
-
-def get_job(ctx: "ContextNode") -> JobContext | None:
-    if isinstance(ctx, JobContext):
-        return ctx
-    elif isinstance(ctx, StepContext):
-        return ctx.job
-    return None
-
-
-def get_workflow(ctx: "ContextNode") -> WorkflowContext | None:
-    if isinstance(ctx, WorkflowContext):
-        return ctx
-    elif isinstance(ctx, JobContext):
-        return ctx.workflow
-    elif isinstance(ctx, StepContext):
-        return ctx.job.workflow
-    return None
 
 
 ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
@@ -500,30 +535,32 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
             )
         elif varname == "returncode":
             return prepare_value(0 if ctx.result is None else ctx.result.returncode)
-    elif root in ("env", "var"):
-        varname = name[4:]
+    elif root == "env":
         current: ContextNode | None = ctx
         while current:
-            if root == "env":
-                for k in ("sys_env", "env"):
-                    dict_ = getattr(current, k, None)
-                    if dict_ and varname in dict_:
-                        return prepare_value(dict_[varname])
-            elif root == "var" and varname in current.var:
+            for k in ("sys_env", "env"):
+                dict_ = getattr(current, k, None)
+                if dict_ and varname in dict_:
+                    return prepare_value(dict_[varname])
+            current = current.parent
+    elif root == "var":
+        current = ctx
+        while current:
+            if varname in current.var:
                 return prepare_value(current.var[varname])
             current = current.parent
     elif root == "workflow":
-        wf = get_workflow(ctx)
+        wf = ctx.workflow
         if wf:
             return _try_get_value(wf, varname, raw)
     elif root == "secrets":
-        wf = get_workflow(ctx)
+        wf = ctx.workflow
         if wf and varname in wf.secrets:
             return prepare_value(
                 RedactedString(cast(str, wf.secrets[varname]), "********")
             )
     elif root == "jobs":
-        wf = get_workflow(ctx)
+        wf = ctx.workflow
         if wf:
             job_id, varname = varname.split(".", maxsplit=1)
             job = wf.jobs.get(job_id)
@@ -531,11 +568,11 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
                 raise ValueError(f"Job {job_id} not found")
             return _try_get_value(job, varname, raw)
     elif root == "job":
-        job = get_job(ctx)
+        job = ctx.job
         if job:
             return _try_get_value(job, varname, raw)
     elif root == "steps":
-        job = get_job(ctx)
+        job = ctx.job
         if job:
             step_id, varname = varname.split(".", maxsplit=1)
             step = job.steps.get(step_id)
@@ -543,24 +580,23 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
                 raise ValueError(f"Step {step_id} not found")
             return _try_get_value(step, varname, raw)
     elif root == "matrix":
-        job = get_job(ctx)
+        job = ctx.job
         if job and varname in job.matrix:
             return prepare_value(job.matrix[varname])
     elif root == "step":
-        step = get_step(ctx)
+        step = ctx.step
         if not step:
             raise ValueError("Step reference not found")
         return _try_get_value(step, varname, raw)
     elif root == "inputs":
-        step = get_step(ctx)
-        if not step:
-            raise ValueError("Step reference not found")
-        if varname in step.inputs:
-            value = RedactedString(step.inputs[varname])
-            value.redacted_value = "********"
-            return prepare_value(value)
+        node = ctx.step or ctx.job
+        if node and varname in node.inputs:
+            if varname in node.sensitive_inputs:
+                return prepare_value(RedactedString(node.inputs[varname], "********"))
+            else:
+                return prepare_value(node.inputs[varname])
     elif root == "outputs":
-        node = get_step(ctx) or get_job(ctx)
+        node = ctx.step or ctx.job
         if node and varname in node.outputs:
             return prepare_value(node.outputs[varname])
 
@@ -583,11 +619,11 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
         ctx.var[varname] = value
         return True
     elif root == "workflow":
-        wf = get_workflow(ctx)
+        wf = ctx.workflow
         if wf:
             return _try_set_value(wf, varname, value)
     elif root == "jobs":
-        wf = get_workflow(ctx)
+        wf = ctx.workflow
         if wf:
             job_id, varname = varname.split(".", maxsplit=1)
             job = wf.jobs.get(job_id)
@@ -595,11 +631,11 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
                 raise ValueError(f"Job {job_id} not found")
             return _try_set_value(job, varname, value)
     elif root == "job":
-        job = get_job(ctx)
+        job = ctx.job
         if job:
             return _try_set_value(job, varname, value)
     elif root == "steps":
-        job = get_job(ctx)
+        job = ctx.job
         if job:
             step_id, varname = varname.split(".", maxsplit=1)
             step = job.steps.get(step_id)
@@ -607,16 +643,16 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
                 raise ValueError(f"Step {step_id} not found")
             return _try_set_value(step, varname, value)
     elif root == "step":
-        step = get_step(ctx)
+        step = ctx.step
         if step:
             return _try_set_value(step, varname, value)
     elif root == "inputs":
-        step = get_step(ctx)
+        step = ctx.step
         if step:
             step.inputs[varname] = value
             return True
     elif root == "outputs":
-        node = get_step(ctx) or get_job(ctx)
+        node = ctx.step or ctx.job
         if node:
             node.outputs[varname] = value
             return True
@@ -660,7 +696,7 @@ def can_dispatch(context: StepContext | JobContext) -> bool:
 def _read_file(ctx: ContextNode, file_path: str) -> bytes:
     """Reads a file from a host and returns its content as bytes."""
 
-    job = get_job(ctx)
+    job = ctx.job
     assert job is not None
 
     result = job.exec(f"base64 -i '{file_path}'", ctx)
@@ -673,7 +709,7 @@ def _read_file(ctx: ContextNode, file_path: str) -> bytes:
 def _write_file(ctx: ContextNode, file_path: str, content: bytes) -> None:
     """Writes content to a file on a host."""
 
-    job = get_job(ctx)
+    job = ctx.job
     assert job is not None
 
     b64 = base64.b64encode(content).decode()

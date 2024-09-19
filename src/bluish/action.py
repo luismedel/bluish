@@ -1,8 +1,7 @@
 from functools import wraps
 from typing import Any, Callable, Dict
 
-from bluish.logging import debug, info
-from bluish.utils import safe_string
+from bluish.logging import debug
 
 DEFAULT_ACTION = "core/default-action"
 
@@ -56,15 +55,10 @@ def action(
                     if not key_exists(param, step.attrs._with):
                         raise RequiredInputError(param)
 
-            if step.attrs._with:
-                info("with:")
-                for k, v in step.attrs._with.items():
-                    v = step.expand_expr(v)
-                    step.inputs[k] = v
-                    if sensitive_inputs and k in sensitive_inputs:
-                        info(f"  {k}: ********")
-                    else:
-                        info(f"  {k}: {safe_string(v)}")
+            if sensitive_inputs:
+                step.sensitive_inputs.update(sensitive_inputs)
+
+            step.log_inputs()
 
             step.result = func(step)
 
