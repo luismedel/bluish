@@ -95,12 +95,7 @@ class ContextNode:
 
     @property
     def display_name(self) -> str:
-        if self.attrs.name:
-            return self.attrs.name
-        elif self.attrs.uses:
-            return self.attrs.uses
-        else:
-            return self.id
+        return self.attrs.name if self.attrs.name else self.id
 
     @property
     def expression_parser(self) -> Callable[[str], Any]:
@@ -459,7 +454,7 @@ class StepContext(InputOutputNode):
     def display_name(self) -> str:
         if self.attrs.name:
             return self.attrs.name
-        elif self.attrs.uses:
+        elif self.attrs.uses and self.attrs.uses != action.DEFAULT_ACTION:
             return self.attrs.uses
         elif self.attrs.run:
             return next(self.attrs.run.split("\n", maxsplit=1))
