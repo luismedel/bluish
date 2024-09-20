@@ -457,7 +457,7 @@ class StepContext(InputOutputNode):
         elif self.attrs.uses and self.attrs.uses != action.DEFAULT_ACTION:
             return self.attrs.uses
         elif self.attrs.run:
-            return next(self.attrs.run.split("\n", maxsplit=1))
+            return self.attrs.run.split("\n", maxsplit=1)[0]
         else:
             return self.id
 
