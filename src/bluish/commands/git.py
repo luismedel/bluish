@@ -4,6 +4,7 @@ from bluish.action import action
 from bluish.context import StepContext
 from bluish.logging import error, info
 from bluish.process import ProcessResult, install_package
+from bluish.utils import safe_string
 
 
 def run_git_command(command: str, step: StepContext) -> ProcessResult:
@@ -17,11 +18,17 @@ def run_git_command(command: str, step: StepContext) -> ProcessResult:
 
 
 def prepare_environment(step: StepContext) -> ProcessResult:
-    if step.job.exec("which git", step).failed:
-        info("Installing git...")
-        result = install_package(step.job.runs_on_host, ["git"])
+    REQUIRED = {
+        "git": "git",
+        "openssh-client": "ssh",
+    }
+    
+    required_packages = [package for package, binary in REQUIRED.items() if step.job.exec(f"which {binary}", step).failed]
+    if required_packages:
+        info(f"Installing missing packages: {required_packages}...")
+        result = install_package(step.job.runs_on_host, required_packages)
         if result.failed:
-            error(f"Failed to install git. Error: {result.error}")
+            error(f"Failed to install required packages. Error: {result.error}")
             return result
 
     return ProcessResult()
@@ -38,11 +45,14 @@ def cleanup_environment(step: StepContext) -> None:
 )
 def git_checkout(step: StepContext) -> ProcessResult:
     try:
+        inputs = step.inputs
+
+        repository: str = step.expand_expr(inputs["repository"])
+        repo_name = os.path.basename(repository)
+
         result = prepare_environment(step)
         if result.failed:
             return result
-
-        inputs = step.inputs
 
         options = ""
         if "depth" in inputs:
@@ -53,23 +63,8 @@ def git_checkout(step: StepContext) -> ProcessResult:
         if "branch" in inputs:
             options += f" --branch {inputs['branch']}"
 
-        repository: str = inputs["repository"]
-        protocol, repository = repository.split("://", maxsplit=1)
-        repo_name = os.path.basename(repository)
-
-        if step.attrs.token:
-            command = f"git clone {protocol}://{step.attrs.token}@{repository} {options} ./{repo_name}"
-        elif step.attrs.username and step.attrs.password:
-            command = f"git clone {protocol}://{step.attrs.username}:{step.attrs.password}@{repository} {options} ./{repo_name}"
-        elif step.attrs.ssh_key_file:
-            key_file = step.inputs["ssh_key_file"]
-            command = f"ssh-agent sh -c 'ssh-add {key_file}; git clone git@{repository} ./{repo_name}'"
-        else:
-            repository = f"{protocol}://{repository}"
-            command = f"git clone {repository} {options} ./{repo_name}"
-
-        info(f"Cloning repository: {repository}...")
-        clone_result = run_git_command(command, step)
+        info(f"Cloning repository: {safe_string(repository)}...")
+        clone_result = run_git_command(f"git clone {repository} {options} ./{repo_name}", step)
         if clone_result.failed:
             error(f"Failed to clone repository: {clone_result.error}")
             return clone_result

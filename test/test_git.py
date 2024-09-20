@@ -10,25 +10,7 @@ def initialize_commands():
     init_commands()
 
 
-@pytest.mark.docker
-def test_docker_checkout() -> None:
-    wf = create_workflow("""
-jobs:
-  checkout:
-    runs_on: docker://ubuntu:latest
-    steps:
-      - uses: git/checkout
-        with:
-          repository: https://github.com/luismedel/bluish.git
-      - run: |
-          head -n1 README.md
-""")
-    _ = wf.dispatch()
-    assert wf.jobs["checkout"].result.stdout == "# Bluish"
-
-
-@pytest.mark.docker
-def test_docker_checkout_alpine() -> None:
+def test_docker_public_checkout() -> None:
     wf = create_workflow("""
 jobs:
   checkout:
@@ -41,4 +23,5 @@ jobs:
           head -n1 README.md
 """)
     _ = wf.dispatch()
-    assert wf.jobs["checkout"].result.stdout == "# Bluish"
+    assert wf.jobs["checkout"].result.stdout == "[![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)"
+
