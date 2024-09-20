@@ -22,8 +22,12 @@ def prepare_environment(step: StepContext) -> ProcessResult:
         "git": "git",
         "openssh-client": "ssh",
     }
-    
-    required_packages = [package for package, binary in REQUIRED.items() if step.job.exec(f"which {binary}", step).failed]
+
+    required_packages = [
+        package
+        for package, binary in REQUIRED.items()
+        if step.job.exec(f"which {binary}", step).failed
+    ]
     if required_packages:
         info(f"Installing missing packages: {required_packages}...")
         result = install_package(step.job.runs_on_host, required_packages)
@@ -64,7 +68,9 @@ def git_checkout(step: StepContext) -> ProcessResult:
             options += f" --branch {inputs['branch']}"
 
         info(f"Cloning repository: {safe_string(repository)}...")
-        clone_result = run_git_command(f"git clone {repository} {options} ./{repo_name}", step)
+        clone_result = run_git_command(
+            f"git clone {repository} {options} ./{repo_name}", step
+        )
         if clone_result.failed:
             error(f"Failed to clone repository: {clone_result.error}")
             return clone_result
