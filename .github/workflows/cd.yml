@@ -3,7 +3,7 @@ name: Fire the publish workflow using Bluish
 on: [push, workflow_dispatch]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,4 +16,4 @@ jobs:
           . .e/bin/activate
           pip install --upgrade pip
           pip install bluish
-          blu publish
+          blu ci:test-all
