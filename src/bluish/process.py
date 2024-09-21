@@ -87,6 +87,9 @@ def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
 def cleanup_host(host_opts: dict[str, Any] | None) -> None:
     """Stops and removes a container if it was started by the process module."""
 
+    if not host_opts:
+        return
+
     host = host_opts.get("host", None) if isinstance(host_opts, dict) else host_opts
     if not host:
         return
@@ -191,7 +194,7 @@ def run(
     return result
 
 
-def get_flavor(host_opts: dict[str, Any]) -> str:
+def get_flavor(host_opts: dict[str, Any] | None) -> str:
     ids = {}
     for line in run("cat /etc/os-release | grep ^ID", host_opts).stdout.splitlines():
         key, value = line.split("=", maxsplit=1)
@@ -200,7 +203,7 @@ def get_flavor(host_opts: dict[str, Any]) -> str:
 
 
 def install_package(
-    host_opts: dict[str, Any], packages: list[str], flavor: str = "auto"
+    host_opts: dict[str, Any] | None, packages: list[str], flavor: str = "auto"
 ) -> ProcessResult:
     """Installs a package on a host."""
 

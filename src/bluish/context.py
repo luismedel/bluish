@@ -170,8 +170,15 @@ class WorkflowContext(ContextNode):
         self.jobs = {k: JobContext(self, k, v) for k, v in self.attrs.jobs.items()}
         self.var = dict(self.attrs.var)
 
+        self.runs_on_host: dict[str, Any] | None = None
+
     def dispatch(self) -> process.ProcessResult:
         self.status = ExecutionStatus.RUNNING
+
+        if self.attrs.runs_on:
+            self.runs_on_host = process.prepare_host(
+                self.expand_expr(self.attrs.runs_on)
+            )
 
         try:
             for job in self.jobs.values():
@@ -187,7 +194,10 @@ class WorkflowContext(ContextNode):
             return self.result
 
         finally:
-            self.status = ExecutionStatus.FINISHED
+            if self.status == ExecutionStatus.RUNNING:
+                self.status = ExecutionStatus.FINISHED
+            process.cleanup_host(self.runs_on_host)
+            self.runs_on_host = None
 
     def dispatch_job(
         self, job: "JobContext", no_deps: bool
@@ -266,7 +276,7 @@ class JobContext(InputOutputNode):
 
         self.id = step_id
 
-        self.runs_on_host: dict[str, Any] = {}
+        self.runs_on_host: dict[str, Any] | None = None
 
         self.attrs.ensure_property("steps", [])
         self.attrs.ensure_property("continue_on_error", False)
@@ -306,6 +316,8 @@ class JobContext(InputOutputNode):
             self.runs_on_host = process.prepare_host(
                 self.expand_expr(self.attrs.runs_on)
             )
+        else:
+            self.runs_on_host = self.workflow.runs_on_host
 
         try:
             if self.matrix:
@@ -333,6 +345,7 @@ class JobContext(InputOutputNode):
             if self.status == ExecutionStatus.RUNNING:
                 self.status = ExecutionStatus.FINISHED
             process.cleanup_host(self.runs_on_host)
+            self.runs_on_host = None
 
         return self.result
 

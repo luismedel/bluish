@@ -662,6 +662,51 @@ jobs:
     assert wf.jobs["test_job"].result.stdout == "Hello, World!"
 
 
+def test_runs_on_job() -> None:
+    wf = create_workflow("""
+jobs:
+    test_job:
+        runs_on: docker://alpine:3.20.3
+        steps:
+            - run: |
+                  cat /etc/os-release
+""")
+    _ = wf.dispatch()
+
+    assert "3.20.3" in wf.jobs["test_job"].result.stdout
+
+
+def test_runs_on_workflow() -> None:
+    wf = create_workflow("""
+runs_on: docker://alpine:3.20.3
+
+jobs:
+    test_job:
+        steps:
+            - run: |
+                  cat /etc/os-release
+""")
+    _ = wf.dispatch()
+
+    assert "3.20.3" in wf.jobs["test_job"].result.stdout
+
+
+def test_runs_on_workflow_override_in_job() -> None:
+    wf = create_workflow("""
+runs_on: docker://alpine:3.20.3
+
+jobs:
+    test_job:
+        runs_on: docker://ubuntu:22.04
+        steps:
+            - run: |
+                  cat /etc/os-release
+""")
+    _ = wf.dispatch()
+
+    assert "22.04" in wf.jobs["test_job"].result.stdout
+
+
 @pytest.mark.docker
 def test_docker_pass_env() -> None:
     wf = create_workflow("""
