@@ -11,13 +11,15 @@ jobs:
     runs_on: docker://python:${{ python_version }}-alpine
 
     steps:
-      - uses: linux/install-packages
+      - name: Install required packages
+        uses: linux/install-packages
         with:
           packages:
             - jq
             - curl
 
-      - run: |
+      - name: Obtain the remote package package version
+        run: |
           pypi_version=$(curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version)
           echo "pypi_version=$pypi_version" >> "$BLUISH_OUTPUT"
         set:
