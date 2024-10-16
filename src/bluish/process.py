@@ -222,5 +222,7 @@ def install_package(
         return run(f"zypper install -y {package_list}", host_opts)
     elif flavor in ("gentoo"):
         return run(f"emerge -v {package_list}", host_opts)
+    elif flavor in ("macos"):
+        return run(f"HOMEBREW_NO_AUTO_UPDATE=1 brew install {package_list}", host_opts)
     else:
         raise ValueError(f"Unsupported flavor: {flavor}")

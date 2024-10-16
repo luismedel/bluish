@@ -256,9 +256,5 @@ def serve(workflow_path: str, host: str, port: int) -> None:
     app.run(host=host, port=port)
 
 
-def test_adhoc():
-    blu_cli("ci:fix", False, "DEBUG")
-
-
 if __name__ == "__main__":
-    test_adhoc()
+    pass
