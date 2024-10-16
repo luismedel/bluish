@@ -208,6 +208,8 @@ def install_package(
     """Installs a package on a host."""
 
     package_list = " ".join(packages)
+    if not packages:
+        raise ValueError("Empty package list")
 
     flavor = get_flavor(host_opts) if flavor == "auto" else flavor
     if flavor in ("alpine", "alpine-edge"):
@@ -223,6 +225,18 @@ def install_package(
     elif flavor in ("gentoo"):
         return run(f"emerge -v {package_list}", host_opts)
     elif flavor in ("macos"):
-        return run(f"HOMEBREW_NO_AUTO_UPDATE=1 brew install {package_list}", host_opts)
+        brew_install_cmd = (
+            "HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install"
+        )
+
+        package_list = " ".join(p for p in packages if not p.startswith("cask:"))
+        if package_list:
+            result = run(f"{brew_install_cmd} {package_list}", host_opts)
+
+        cask_list = " ".join(p[5:] for p in packages if not p.startswith("cask:"))
+        if cask_list:
+            result = run(f"{brew_install_cmd} --cask {cask_list}", host_opts)
+
+        return result
     else:
         raise ValueError(f"Unsupported flavor: {flavor}")
