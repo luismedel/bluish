@@ -1,3 +1,5 @@
+[![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)
+
 # Bluish
 
 > ##  Note to readers: This documentation is still in its early stages and may be (in fact, it is) incomplete.
