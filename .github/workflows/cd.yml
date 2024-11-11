@@ -10,4 +10,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: luismedel/setup-bluish@v3
       - run: |
+          pip3 install -r requirements-testing.txt
+      - run: |
           blu ci:test-all
