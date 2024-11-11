@@ -5,7 +5,7 @@ from bluish.process import ProcessResult, install_package
 
 
 @action("linux/install-packages", required_inputs=["packages"])
-def system_install_packages(step: StepContext) -> ProcessResult:
+def linux_install_packages(step: StepContext) -> ProcessResult:
     package_str = " ".join(step.inputs["packages"])
     flavor = step.inputs.get("flavor", "auto")
 
