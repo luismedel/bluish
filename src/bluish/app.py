@@ -9,7 +9,7 @@ import yaml
 from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
-from bluish.context import WorkflowContext
+from bluish.contexts.workflow import WorkflowContext
 from bluish.core import (
     init_commands,
 )

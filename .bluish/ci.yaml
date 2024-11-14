@@ -22,7 +22,6 @@ jobs:
 
   fix:
     name: Reformats the code using ruff
-    depends_on: [lint]
     steps:
       - run: |
           ruff version
