@@ -79,12 +79,14 @@ class ExpandTemplate(bluish.actions.base.Action):
 
 class UploadFile(bluish.actions.base.Action):
     FQN: str = "core/upload-file"
-    REQUIRED_INPUTS: tuple[str, ...] = ("source_file", "destination_file", "replace")
+    REQUIRED_INPUTS: tuple[str, ...] = ("source_file", "destination_file")
 
     def run(
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
         inputs = step.inputs
+
+        contents: str
 
         source_file = inputs["source_file"]
         source_file = os.path.expanduser(source_file)
@@ -94,19 +96,14 @@ class UploadFile(bluish.actions.base.Action):
             contents = f.read()
         info(f" - Read {len(contents)} bytes.")
 
-        replace = inputs["replace"]
-        replace = step.expand_expr(replace)
-
         destination_file = inputs.get("destination_file")
         assert destination_file is not None
-
-        info(f"Updating file: {destination_file}...")
-        updated_contents = contents.replace(replace[0], replace[1])
-
+        
         job = cast(bluish.contexts.job.JobContext, step.job)
 
+        info(f"Writing file to: {destination_file}...")
         try:
-            job.write_file(destination_file, updated_contents.encode())
+            job.write_file(destination_file, contents.encode())
             result = bluish.process.ProcessResult()
         except IOError as e:
             error(f"Failed to write file: {str(e)}")
