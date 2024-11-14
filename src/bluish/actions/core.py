@@ -77,8 +77,8 @@ class ExpandTemplate(bluish.actions.base.Action):
         return bluish.process.ProcessResult(stdout=expanded_content)
 
 
-class UpdateFile(bluish.actions.base.Action):
-    FQN: str = "core/update-file"
+class UploadFile(bluish.actions.base.Action):
+    FQN: str = "core/upload-file"
     REQUIRED_INPUTS: tuple[str, ...] = ("source_file", "destination_file", "replace")
 
     def run(

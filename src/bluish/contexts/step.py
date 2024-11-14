@@ -17,6 +17,9 @@ class StepContext(contexts.InputOutputNode):
         self.attrs.ensure_property("uses", "")
         self.attrs.ensure_property("continue_on_error", False)
         self.attrs.ensure_property("shell", bluish.process.DEFAULT_SHELL)
+        
+        if bluish.actions.get_action(self.attrs.uses) is None:
+            raise ValueError(f"Unknown action: {self.attrs.uses}")
 
         self.id = self.attrs.id
 

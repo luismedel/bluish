@@ -19,7 +19,7 @@ def init_commands() -> None:
         bluish.actions.core.RunCommand,
         bluish.actions.core.ExpandTemplate,
         bluish.actions.core.DownloadFile,
-        bluish.actions.core.UpdateFile,
+        bluish.actions.core.UploadFile,
         bluish.actions.linux.InstallPackages,
         bluish.actions.macos.InstallPackages,
         bluish.actions.docker.Build,

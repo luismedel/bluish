@@ -10,6 +10,6 @@ def get_action(fqn: str) -> type | None:
 def register_action(klass: type) -> None:
     if not hasattr(klass, "FQN"):
         raise ValueError("Action class must have an FQN attribute")
-    if klass.FQN in _REGISTERED_ACTIONS:
+    if klass.FQN in _REGISTERED_ACTIONS and _REGISTERED_ACTIONS[klass.FQN] != klass:
         raise ValueError(f"Action {klass.FQN} is already registered")
     _REGISTERED_ACTIONS[klass.FQN] = klass
