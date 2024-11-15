@@ -197,10 +197,14 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
         member_result = _try_get_value(ctx, f".{name}", raw=raw)
         var_result = _try_get_value(ctx, f"var.{name}", raw=raw)
 
-        if var_result and member_result:
+        if var_result is not None and member_result is not None:
             raise ValueError(f"Ambiguous value reference: {name}")
+        elif var_result is not None:
+            return var_result
+        elif member_result is not None:
+            return member_result
         else:
-            return var_result or member_result or None
+            return None
 
     root, varname = name.split(".", maxsplit=1)
 
@@ -354,7 +358,7 @@ def can_dispatch(context: InputOutputNode) -> bool:
         return context.attrs._if
     elif not isinstance(context.attrs._if, str):
         raise ValueError("Condition must be a bool or a string")
-
+    print(context.expand_expr(context.attrs._if))
     return bool(context.expand_expr(context.attrs._if))
 
 

@@ -176,6 +176,10 @@ jobs:
 
 def test_conditions() -> None:
     wf = create_workflow("""
+var:
+    true_var: true
+    false_var: false
+
 jobs:
     # check == false at the job level
     job1:
@@ -201,7 +205,7 @@ jobs:
     job4:
         name: "Job 4"
         steps:
-            - if: ${{ true }}
+            - if: ${{ true_var }}
               shell: python
               run: |
                 print("This is Job 4")
@@ -210,7 +214,7 @@ jobs:
     job5:
         name: "Job 5"
         steps:
-            - if: ${{ false }}
+            - if: ${{ false_var }}
               shell: python
               run: |
                 print("This will not be printed")
