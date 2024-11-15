@@ -184,7 +184,7 @@ jobs:
     # check == false at the job level
     job1:
         name: "Job 1"
-        if: ${{ false }}
+        if: false
         steps:
             - run: echo 'This will not be printed'
 
@@ -214,7 +214,7 @@ jobs:
     job5:
         name: "Job 5"
         steps:
-            - if: ${{ false_var }}
+            - if: false_var
               shell: python
               run: |
                 print("This will not be printed")

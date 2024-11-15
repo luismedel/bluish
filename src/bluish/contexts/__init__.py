@@ -358,8 +358,15 @@ def can_dispatch(context: InputOutputNode) -> bool:
         return context.attrs._if
     elif not isinstance(context.attrs._if, str):
         raise ValueError("Condition must be a bool or a string")
-    print(context.expand_expr(context.attrs._if))
-    return bool(context.expand_expr(context.attrs._if))
+
+    # Allow bare `if` expressions without placeholders
+    condition = context.attrs._if
+    if "${{" not in condition:
+        condition = "${{" + condition + "}}"
+    
+    print(condition)
+
+    return bool(context.expand_expr(condition))
 
 
 def _read_file(ctx: ContextNode, file_path: str) -> bytes:
