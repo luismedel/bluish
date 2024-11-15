@@ -816,4 +816,4 @@ jobs:
 
     assert wf.jobs["test_job"].failed
     assert wf.jobs["test_job"].steps["step_1"].failed
-    assert wf.get_value("jobs.test_job.steps.step_2.stdout", "not run") == "not run"
+    assert wf.get_value("jobs.test_job.steps.step_2.stdout") == ""
