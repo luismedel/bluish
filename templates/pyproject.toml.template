@@ -9,7 +9,6 @@ authors = [
   { name="Luis Medel", email="luis@luismedel.com>" },
 ]
 description = "A CI/CD tool"
-homepage = "https://github.com/luismedel/bluish/"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
