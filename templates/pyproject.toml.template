@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "bluish"
 version = "${{ var.project_version }}"
 authors = [
-  { name="Luis Medel", email="luis@luismedel.com>" },
+  { name="Luis Medel", email="luis@luismedel.com" },
 ]
 description = "A CI/CD tool"
 readme = "README.md"
