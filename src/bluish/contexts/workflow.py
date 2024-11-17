@@ -14,7 +14,7 @@ from bluish.logging import debug, error, info
 class WorkflowContext(bluish.contexts.ContextNode):
     NODE_TYPE = "workflow"
 
-    def __init__(self, definition: dict[str, Any]) -> None:
+    def __init__(self, definition: bluish.contexts.Definition) -> None:
         super().__init__(None, definition)
 
         self.attrs.ensure_property("var", {})
@@ -36,7 +36,7 @@ class WorkflowContext(bluish.contexts.ContextNode):
         }
 
         self.jobs = {
-            k: bluish.contexts.job.JobContext(self, k, v)
+            k: bluish.contexts.job.JobContext(self, k, bluish.contexts.JobDefinition(v))
             for k, v in self.attrs.jobs.items()
         }
         self.var = dict(self.attrs.var)

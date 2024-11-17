@@ -18,7 +18,7 @@ def run_git_command(
     if key_file:
         preamble = f"export GIT_SSH_COMMAND='ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeychecking=no';"
 
-    job = cast(bluish.contexts.job.JobContext, step.job)
+    job = cast(bluish.contexts.job.JobContext, step.parent)
     return job.exec(f"{preamble} {command}", step)
 
 
@@ -30,7 +30,7 @@ def prepare_environment(
         "openssh-client": "ssh",
     }
 
-    job = cast(bluish.contexts.job.JobContext, step.job)
+    job = cast(bluish.contexts.job.JobContext, step.parent)
 
     required_packages = [
         package
@@ -93,7 +93,7 @@ class Checkout(bluish.actions.base.Action):
             # Update the current job working dir to the newly cloned repo
             info(f"Setting working directory to: {repo_name}...")
             wd = step.get_inherited_attr("working_directory", ".")
-            step.job.set_attr("working_directory", f"{wd}/{repo_name}")
+            step.parent.set_attr("working_directory", f"{wd}/{repo_name}")  # type: ignore
 
             return clone_result
         finally:

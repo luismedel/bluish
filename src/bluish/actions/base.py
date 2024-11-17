@@ -2,6 +2,7 @@ from typing import Sequence
 
 import bluish.contexts.step
 import bluish.process
+from bluish.contexts import Definition
 from bluish.logging import debug
 
 
@@ -15,9 +16,9 @@ class RequiredAttributeError(Exception):
         super().__init__(f"Missing required attribute: {param}")
 
 
-def _key_exists(key: str, values: dict) -> bool:
+def _key_exists(key: str, attrs: Definition) -> bool:
     """Checks if a key (or pipe-separated alternative keys) exists in a dictionary."""
-    return ("|" in key and any(i in values for i in key.split("|"))) or key in values
+    return ("|" in key and any(i in attrs for i in key.split("|"))) or key in attrs
 
 
 class Action:
@@ -35,7 +36,7 @@ class Action:
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
         for attr in self.REQUIRED_ATTRS:
-            if not _key_exists(attr, step.attrs.__dict__):
+            if not _key_exists(attr, step.attrs):
                 raise RequiredAttributeError(attr)
 
         if self.REQUIRED_INPUTS and not step.attrs._with:

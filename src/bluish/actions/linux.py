@@ -19,7 +19,7 @@ class InstallPackages(bluish.actions.base.Action):
 
         info(f"Installing packages {package_str}...")
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
 
         result = bluish.process.install_package(
             job.runs_on_host, step.inputs["packages"], flavor=flavor

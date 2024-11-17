@@ -32,7 +32,7 @@ def _is_valid_docker_id(id: str) -> bool:
 
 
 def run_and_get_pid(command: str, step: bluish.contexts.step.StepContext) -> str:
-    job = cast(bluish.contexts.job.JobContext, step.job)
+    job = cast(bluish.contexts.job.JobContext, step.parent)
     result = job.exec(command, step)
     return result.stdout.strip() if result.returncode == 0 else ""
 
@@ -43,7 +43,7 @@ def docker_ps(
     pid: str | None = None,
 ) -> bluish.process.ProcessResult:
     filter = f"name={name}" if name else f"id={pid}"
-    job = cast(bluish.contexts.job.JobContext, step.job)
+    job = cast(bluish.contexts.job.JobContext, step.parent)
     return job.exec(f"docker ps -f {filter} --all --quiet", step)
 
 
@@ -70,7 +70,7 @@ class Login(bluish.actions.base.Action):
             )
             info(f"Docker login:\n -> {protected_command}")
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
         login_result = job.exec(command, step, stream_output=True)
         if login_result.failed:
             error(f"Login failed: {login_result.error}")
@@ -86,7 +86,7 @@ class Logout(bluish.actions.base.Action):
         command = "docker logout"
         if step.get_inherited_attr("echo_commands", True):
             info("Logging out of Docker...")
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
         return job.exec(command, step)
 
 
@@ -109,7 +109,7 @@ class Build(bluish.actions.base.Action):
         if step.get_inherited_attr("echo_commands", True):
             info(f"Building image:\n -> {command}")
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
         build_result = job.exec(command, step, stream_output=True)
         if build_result.failed:
             error(f"Failed to build image: {build_result.error}")
@@ -184,7 +184,7 @@ class Run(bluish.actions.base.Action):
         for flag in ["quiet"]:
             options += _build_flag(f"--{flag}", inputs.get(flag))
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
         run_result = job.exec(f"docker run {options} {image}", step)
         if run_result.failed:
             error(f"Failed to start container with image {image}: {run_result.error}")
@@ -216,7 +216,7 @@ class Stop(bluish.actions.base.Action):
         remove_container = inputs.get("remove", False)
         stop_container = True
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
 
         info(f"Stopping container with {input_attr}...")
 
@@ -328,7 +328,7 @@ class Exec(bluish.actions.base.Action):
             if echo_commands:
                 info(line)
 
-            job = cast(bluish.contexts.job.JobContext, step.job)
+            job = cast(bluish.contexts.job.JobContext, step.parent)
             result = job.exec(f"docker exec {options} {container_pid} {line}", step)
             output += result.stdout
 
@@ -355,7 +355,7 @@ class CreateNetwork(bluish.actions.base.Action):
         inputs = step.inputs
 
         name = inputs["name"]
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
 
         info(f"Creating network {name}...")
 

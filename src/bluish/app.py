@@ -9,6 +9,7 @@ import yaml
 from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
+from bluish.contexts import WorkflowDefinition
 from bluish.contexts.workflow import WorkflowContext
 from bluish.core import (
     init_commands,
@@ -80,7 +81,8 @@ def workflow_from_file(file: str) -> WorkflowContext:
     if not yaml_contents:
         fatal("No workflow file found.")
 
-    return WorkflowContext(yaml.safe_load(yaml_contents))
+    definition = WorkflowDefinition(yaml.safe_load(yaml_contents))
+    return WorkflowContext(definition)
 
 
 @click.command("blu")

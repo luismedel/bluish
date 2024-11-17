@@ -17,7 +17,7 @@ class RunCommand(bluish.actions.base.Action):
     def run(
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
-        env = ChainMap(step.env, step.job.env, step.workflow.env)  # type: ignore
+        env = ChainMap(step.env, step.parent.env, step.parent.parent.env)  # type: ignore
 
         if env:
             info("env:")
@@ -39,7 +39,7 @@ class RunCommand(bluish.actions.base.Action):
         if echo_commands:
             info(command)
 
-        return step.job.exec(command, step, env=env, stream_output=echo_output)  # type: ignore
+        return step.parent.exec(command, step, env=env, stream_output=echo_output)  # type: ignore
 
 
 class ExpandTemplate(bluish.actions.base.Action):
@@ -51,7 +51,7 @@ class ExpandTemplate(bluish.actions.base.Action):
     ) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
-        job = cast(bluish.contexts.job.JobContext, step.job)
+        job = cast(bluish.contexts.job.JobContext, step.parent)
 
         template_content: str
         if "input_file" in inputs:
@@ -98,8 +98,8 @@ class UploadFile(bluish.actions.base.Action):
 
         destination_file = inputs.get("destination_file")
         assert destination_file is not None
-        
-        job = cast(bluish.contexts.job.JobContext, step.job)
+
+        job = cast(bluish.contexts.job.JobContext, step.parent)
 
         info(f"Writing file to: {destination_file}...")
         try:
@@ -132,7 +132,7 @@ class DownloadFile(bluish.actions.base.Action):
         source_file = inputs["source_file"]
         info(f"Reading file: {source_file}...")
         try:
-            job = cast(bluish.contexts.job.JobContext, step.job)
+            job = cast(bluish.contexts.job.JobContext, step.parent)
             raw_contents = job.read_file(source_file)
         except IOError as e:
             error(f"Failed to read file: {str(e)}")

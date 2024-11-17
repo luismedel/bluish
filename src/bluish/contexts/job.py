@@ -13,7 +13,10 @@ class JobContext(contexts.InputOutputNode):
     NODE_TYPE = "job"
 
     def __init__(
-        self, parent: contexts.ContextNode, step_id: str, definition: dict[str, Any]
+        self,
+        parent: contexts.ContextNode,
+        step_id: str,
+        definition: contexts.Definition,
     ):
         import bluish.contexts.step
 
@@ -39,13 +42,10 @@ class JobContext(contexts.InputOutputNode):
         }
 
         self.steps: dict[str, bluish.contexts.step.StepContext] = {}
-        for i, step in enumerate(self.attrs.steps):
-            if "id" not in step:
-                step["id"] = f"step_{i+1}"
-            step_id = step["id"]
-            step = bluish.contexts.step.StepContext(self, step)
-            if not step.id:
-                step.id = step_id
+        for i, step_dict in enumerate(self.attrs.steps):
+            step_def = contexts.StepDefinition(step_dict)
+            step_def.ensure_property("id", f"step_{i+1}")
+            step = bluish.contexts.step.StepContext(self, step_def)
             self.steps[step_id] = step
 
     def dispatch(self) -> bluish.process.ProcessResult | None:
@@ -58,7 +58,7 @@ class JobContext(contexts.InputOutputNode):
                 self.expand_expr(self.attrs.runs_on)
             )
         else:
-            self.runs_on_host = self.workflow.runs_on_host  # type: ignore
+            self.runs_on_host = self.parent.runs_on_host  # type: ignore
 
         try:
             if self.matrix:
