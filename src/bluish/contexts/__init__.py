@@ -24,9 +24,7 @@ class Definition:
 
     def __init__(self, attrs: dict[str, Any]):
         self.__dict__["_attrs"] = attrs
-        remaining = self._validate_attrs(attrs)
-        if remaining:
-            raise ValueError(f"Invalid attributes: {remaining.keys()}")
+        _ = self._validate_attrs(attrs)
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__["_attrs"]

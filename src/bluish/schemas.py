@@ -21,10 +21,12 @@ STEP_SCHEMA = {
         "secrets_file": [str, None],
         "env_file": [str, None],
         "uses": [str, None],
-        "run": [str, None],
-        "with": [Any, None],
         "if": [str, None],
         "continue_on_error": [bool, None],
+        "set": [KV, None],
+        "echo_commands": [bool, None],
+        "echo_output": [bool, None],
+        "with": [Any, None],
     },
 }
 

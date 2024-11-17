@@ -25,14 +25,6 @@ def _key_exists(key: str, attrs: Definition) -> bool:
 class Action:
     FQN: str = ""
 
-    COMMON_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "echo_commands": [bool, None],
-            "echo_output": [bool, None],
-            "set": [KV, None],
-        },
-    }
     SCHEMA: dict = {}
     INPUTS_SCHEMA: dict = {}
     SENSITIVE_INPUTS: Sequence[str] = tuple()
@@ -45,9 +37,9 @@ class Action:
     def execute(
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
-        validate_schema(self.COMMON_SCHEMA, step.attrs.as_dict())
-        validate_schema(self.SCHEMA, step.attrs.as_dict())
-        if step.attrs._with:
+        if self.SCHEMA:
+            validate_schema(self.SCHEMA, step.attrs.as_dict())
+        if self.INPUTS_SCHEMA and step.attrs._with:
             validate_schema(self.INPUTS_SCHEMA, step.attrs._with)
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
