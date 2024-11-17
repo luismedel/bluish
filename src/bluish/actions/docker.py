@@ -49,7 +49,16 @@ def docker_ps(
 
 class Login(bluish.actions.base.Action):
     FQN: str = "docker/login"
-    REQUIRED_INPUTS: tuple[str, ...] = ("username", "password")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "username": str,
+            "password": str,
+            "registry": [str, None],
+        },
+    }
+
     SENSITIVE_INPUTS: tuple[str, ...] = ("password",)
 
     def run(
@@ -92,7 +101,15 @@ class Logout(bluish.actions.base.Action):
 
 class Build(bluish.actions.base.Action):
     FQN: str = "docker/build"
-    REQUIRED_INPUTS: tuple[str, ...] = ("tags",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "dockerfile": [str, None],
+            "tags": [str, list[str]],
+            "context": [str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -118,7 +135,13 @@ class Build(bluish.actions.base.Action):
 
 class GetPid(bluish.actions.base.Action):
     FQN: str = "docker/get-pid"
-    REQUIRED_INPUTS: tuple[str, ...] = ("name",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "name": str,
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -144,7 +167,25 @@ class GetPid(bluish.actions.base.Action):
 
 class Run(bluish.actions.base.Action):
     FQN: str = "docker/run"
-    REQUIRED_INPUTS: tuple[str, ...] = ("image", "name")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "image": str,
+            "name": str,
+            "fail_if_running": [bool, None],
+            "ports": [str, list[str], None],
+            "volumes": [str, list[str], None],
+            "env": [str, list[str], None],
+            "env_file": [str, list[str], None],
+            "network": [str, None],
+            "label": [str, list[str], None],
+            "pull": [str, None],
+            "user": [str, None],
+            "remove": [bool, None],
+            "quiet": [bool, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -203,7 +244,18 @@ class Run(bluish.actions.base.Action):
 
 class Stop(bluish.actions.base.Action):
     FQN: str = "docker/stop"
-    REQUIRED_INPUTS: tuple[str, ...] = ("name|pid",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "name": [str, None],
+            "pid": [str, None],
+            "signal": [str, None],
+            "time": [str, None],
+            "remove": [bool, None],
+            "fail_if_not_found": [bool, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -273,7 +325,18 @@ class Stop(bluish.actions.base.Action):
 
 class Exec(bluish.actions.base.Action):
     FQN: str = "docker/exec"
-    REQUIRED_INPUTS: tuple[str, ...] = ("name|pid", "run")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "name": [str, None],
+            "pid": [str, None],
+            "run": str,
+            "env": [str, list[str], None],
+            "env_file": [str, list[str], None],
+            "workdir": [str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -347,7 +410,17 @@ class Exec(bluish.actions.base.Action):
 
 class CreateNetwork(bluish.actions.base.Action):
     FQN: str = "docker/create-network"
-    REQUIRED_INPUTS: tuple[str, ...] = ("name",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "name": str,
+            "fail_if_exists": [bool, None],
+            "label": [str, list[str], None],
+            "ingress": [bool, None],
+            "internal": [bool, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext

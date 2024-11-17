@@ -126,6 +126,11 @@ def blu_cli(
             click.secho("Job completed successfully.", fg="green")
 
     except Exception as e:
+        if os.environ.get("BLUISH_DEBUG"):
+            import traceback
+
+            trace = traceback.format_exc()
+            print(trace)
         fatal(str(e))
 
 

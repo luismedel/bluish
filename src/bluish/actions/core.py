@@ -12,7 +12,13 @@ from bluish.utils import safe_string
 
 class RunCommand(bluish.actions.base.Action):
     FQN: str = ""
-    REQUIRED_ATTRS: tuple[str, ...] = ("run|set",)
+    SCHEMA = {
+        "type": dict,
+        "properties": {
+            "run": [str, None],
+            "shell": [str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -44,7 +50,16 @@ class RunCommand(bluish.actions.base.Action):
 
 class ExpandTemplate(bluish.actions.base.Action):
     FQN: str = "core/expand-template"
-    REQUIRED_INPUTS: tuple[str, ...] = ("input|input_file", "output_file")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "input": [str, None],
+            "input_file": [str, None],
+            "output_file": str,
+            "chmod": [int, str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -79,7 +94,15 @@ class ExpandTemplate(bluish.actions.base.Action):
 
 class UploadFile(bluish.actions.base.Action):
     FQN: str = "core/upload-file"
-    REQUIRED_INPUTS: tuple[str, ...] = ("source_file", "destination_file")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "source_file": str,
+            "destination_file": str,
+            "chmod": [int, str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -122,7 +145,15 @@ class UploadFile(bluish.actions.base.Action):
 
 class DownloadFile(bluish.actions.base.Action):
     FQN: str = "core/download-file"
-    REQUIRED_INPUTS: tuple[str, ...] = ("source_file", "destination_file")
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "source_file": str,
+            "destination_file": str,
+            "chmod": [int, str, None],
+        },
+    }
 
     def run(
         self, step: bluish.contexts.step.StepContext

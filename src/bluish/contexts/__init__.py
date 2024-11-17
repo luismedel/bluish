@@ -28,9 +28,8 @@ class Definition:
         if remaining:
             raise ValueError(f"Invalid attributes: {remaining.keys()}")
 
-    @property
-    def attrs(self) -> dict[str, Any]:
-        return self._attrs
+    def as_dict(self) -> dict[str, Any]:
+        return self.__dict__["_attrs"]
 
     def get(self, name: str, default: Any = None) -> Any:
         return self.__dict__["_attrs"].get(name, default)
@@ -401,8 +400,6 @@ def can_dispatch(context: InputOutputNode) -> bool:
     condition = context.attrs._if
     if "${{" not in condition:
         condition = "${{" + condition + "}}"
-
-    print(condition)
 
     return bool(context.expand_expr(condition))
 

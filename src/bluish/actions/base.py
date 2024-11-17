@@ -4,6 +4,7 @@ import bluish.contexts.step
 import bluish.process
 from bluish.contexts import Definition
 from bluish.logging import debug
+from bluish.schemas import KV, validate_schema
 
 
 class RequiredInputError(Exception):
@@ -23,8 +24,17 @@ def _key_exists(key: str, attrs: Definition) -> bool:
 
 class Action:
     FQN: str = ""
-    REQUIRED_ATTRS: Sequence[str] = tuple()
-    REQUIRED_INPUTS: Sequence[str] = tuple()
+
+    COMMON_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "echo_commands": [bool, None],
+            "echo_output": [bool, None],
+            "set": [KV, None],
+        },
+    }
+    SCHEMA: dict = {}
+    INPUTS_SCHEMA: dict = {}
     SENSITIVE_INPUTS: Sequence[str] = tuple()
 
     def run(
@@ -35,16 +45,10 @@ class Action:
     def execute(
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
-        for attr in self.REQUIRED_ATTRS:
-            if not _key_exists(attr, step.attrs):
-                raise RequiredAttributeError(attr)
-
-        if self.REQUIRED_INPUTS and not step.attrs._with:
-            raise RequiredInputError(self.REQUIRED_INPUTS[0])
-
-        for param in self.REQUIRED_INPUTS:
-            if not _key_exists(param, step.attrs._with):
-                raise RequiredInputError(param)
+        validate_schema(self.COMMON_SCHEMA, step.attrs.as_dict())
+        validate_schema(self.SCHEMA, step.attrs.as_dict())
+        if step.attrs._with:
+            validate_schema(self.INPUTS_SCHEMA, step.attrs._with)
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
         step.log_inputs()

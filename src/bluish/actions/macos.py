@@ -5,11 +5,19 @@ import bluish.contexts.job
 import bluish.contexts.step
 from bluish.logging import error, info
 from bluish.process import ProcessResult, install_package
+from bluish.schemas import STR_LIST
 
 
 class InstallPackages(bluish.actions.base.Action):
     FQN: str = "macos/install-packages"
-    REQUIRED_INPUTS: tuple[str, ...] = ("packages",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "packages": STR_LIST,
+            "flavor": [str, None],
+        },
+    }
 
     def run(self, step: bluish.contexts.step.StepContext) -> ProcessResult:
         package_str = " ".join(step.inputs["packages"])

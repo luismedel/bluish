@@ -53,7 +53,17 @@ def cleanup_environment(step: bluish.contexts.step.StepContext) -> None:
 
 class Checkout(bluish.actions.base.Action):
     FQN: str = "git/checkout"
-    REQUIRED_INPUTS: tuple[str, ...] = ("repository",)
+
+    INPUTS_SCHEMA = {
+        "type": dict,
+        "properties": {
+            "repository": str,
+            "depth": [int, None],
+            "branch": [str, None],
+        },
+        "required": ["repository"],
+    }
+
     SENSITIVE_INPUTS: tuple[str, ...] = ("ssh_key_file", "password")
 
     @property

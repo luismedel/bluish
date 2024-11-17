@@ -16,19 +16,18 @@ class StepContext(contexts.InputOutputNode):
         self.attrs.ensure_property("continue_on_error", False)
         self.attrs.ensure_property("shell", bluish.process.DEFAULT_SHELL)
 
-        if bluish.actions.get_action(self.attrs.uses) is None:
-            raise ValueError(f"Unknown action: {self.attrs.uses}")
-
         self.id = self.attrs.id
+
+        self.action_class = bluish.actions.get_action(self.attrs.uses)
+        if self.action_class is None:
+            raise ValueError(f"Unknown action: {self.attrs.uses}")
 
     @property
     def display_name(self) -> str:
         if self.attrs.name:
             return self.attrs.name
-        elif (
-            action_class := bluish.actions.get_action(self.attrs.uses)
-        ) and action_class.FQN:  # type: ignore
-            return self.attrs.uses
+        elif self.action_class.FQN:  # type: ignore
+            return self.action_class.FQN  # type: ignore
         elif self.attrs.run:
             return self.attrs.run.split("\n", maxsplit=1)[0]
         else:
@@ -37,7 +36,7 @@ class StepContext(contexts.InputOutputNode):
     def dispatch(self) -> bluish.process.ProcessResult | None:
         info(f"* Run step '{self.display_name}'")
 
-        if not bluish.contexts.can_dispatch(self):
+        if not contexts.can_dispatch(self):
             self.status = bluish.core.ExecutionStatus.SKIPPED
             info(" >>> Skipped")
             return None
@@ -45,14 +44,12 @@ class StepContext(contexts.InputOutputNode):
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         try:
-            klass = bluish.actions.get_action(self.attrs.uses)
-            if not klass:
-                raise ValueError(f"Unknown action: {self.attrs.uses}")
+            assert self.action_class is not None
 
             if self.attrs.uses:
                 info(f"Running {self.attrs.uses}")
 
-            self.result = klass().execute(self)
+            self.result = self.action_class().execute(self)
             self.failed = self.result.failed
 
         finally:

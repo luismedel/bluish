@@ -22,8 +22,9 @@ STEP_SCHEMA = {
         "env_file": [str, None],
         "uses": [str, None],
         "run": [str, None],
-        "with": [KV, None],
+        "with": [Any, None],
         "if": [str, None],
+        "continue_on_error": [bool, None],
     },
 }
 
@@ -39,6 +40,7 @@ JOB_SCHEMA = {
         "runs_on": [str, None],
         "depends_on": [STR_LIST, None],
         "continue_on_error": [bool, None],
+        "with": [Any, None],
         "steps": {
             "type": list,
             "item_schema": STEP_SCHEMA,
@@ -56,6 +58,7 @@ WORKFLOW_SCHEMA = {
         "secrets_file": [str, None],
         "env_file": [str, None],
         "runs_on": [str, None],
+        "with": [Any, None],
         "jobs": {
             "type": dict,
             "key_schema": str,
@@ -73,18 +76,20 @@ def _get_type_repr(t: type_def | None) -> str:
         return "None"
     elif isinstance(t, list):
         return " | ".join(_get_type_repr(tt) for tt in t)
-    elif isinstance(t, dict):
+    elif isinstance(t, dict) and "type" in t:
         return f"{t['type']}"
     else:
         return f"{t}"
 
 
 def _find_type(value: Any, t: type_def | None) -> dict | type | None:
-    if t is None:
+    if value is None or t is None:
         return None
     elif isinstance(t, list):
         return next((tt for tt in t if _find_type(value, tt)), None)  # type: ignore
     elif isinstance(t, dict):
+        if "type" not in t:
+            return None
         if t["type"] is Any:
             return t
         return t if type(value) is t["type"] else None
@@ -154,10 +159,10 @@ def validate_schema(
         if "properties" in type_def:
             properties: dict = type_def["properties"]
             for prop, tdef in properties.items():
-                if prop not in data:
-                    if _is_required(tdef):
-                        raise ValueError(f"Missing required key: {prop}")
-                    continue
+                if data.get(prop) is None:
+                    if not _is_required(tdef):
+                        continue
+                    raise ValueError(f"Missing required key: {prop}")
                 validate_schema(tdef, data[prop])
 
         if reject_extra_keys and "properties" in type_def:
