@@ -166,7 +166,8 @@ def bluish_cli(
     if not yaml_contents:
         fatal("No workflow file found.")
 
-    wf = WorkflowContext(yaml.safe_load(yaml_contents))
+    definition = WorkflowDefinition(yaml.safe_load(yaml_contents))
+    wf = WorkflowContext(definition)
     ctx.obj = wf
 
 
