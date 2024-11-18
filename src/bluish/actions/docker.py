@@ -5,6 +5,7 @@ import bluish.contexts.job
 import bluish.contexts.step
 import bluish.process
 from bluish.logging import debug, error, info, warning
+from bluish.schemas import STR_LIST
 from bluish.utils import decorate_for_log
 
 
@@ -106,7 +107,7 @@ class Build(bluish.actions.base.Action):
         "type": dict,
         "properties": {
             "dockerfile": [str, None],
-            "tags": [str, list[str]],
+            "tags": [str, STR_LIST],
             "context": [str, None],
         },
     }

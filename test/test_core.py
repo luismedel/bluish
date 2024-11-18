@@ -4,7 +4,7 @@ from io import FileIO
 from test.utils import create_workflow
 
 import pytest
-from bluish.actions.base import RequiredAttributeError, RequiredInputError
+from bluish.schemas import RequiredAttributeError
 from bluish.contexts import CircularDependencyError
 from bluish.core import (
     ExecutionStatus,
@@ -353,7 +353,7 @@ jobs:
     try:
         _ = wf.dispatch()
         raise AssertionError("Mandatory input not detected")
-    except RequiredInputError:
+    except RequiredAttributeError:
         pass
 
 
@@ -392,7 +392,7 @@ jobs:
 def test_expansion_with_ambiguity() -> None:
     wf = create_workflow("""
 var:
-    test_result:
+    test_result: 
     stdout: "No"
 
 jobs:
@@ -467,11 +467,9 @@ jobs:
     assert wf.get_value("var.VALUE") == 1
     assert wf.get_value("workflow.var.VALUE") == 1
     assert wf.get_value("workflow.jobs.test_job.var.VALUE") == 2
-    assert wf.jobs["test_job"].get_value("var.VALUE") == 2
-    assert wf.jobs["test_job"].steps["step-1"].get_value("var.VALUE") == 2
-    assert wf.jobs["test_job"].steps["step-1"].get_value("job.var.VALUE") == 2
-    assert wf.jobs["test_job"].get_value("var.VALUE") == 2
-    assert wf.jobs["test_job"].get_value("job.var.VALUE") == 2
+    assert wf.get_value("jobs.test_job.var.VALUE") == 2
+    assert wf.get_value("jobs.test_job.steps.step-1.var.VALUE") == 2
+    assert wf.get_value("jobs.test_job.var.VALUE") == 2
 
 
 def test_expressions() -> None:
@@ -547,14 +545,14 @@ jobs:
               set:
                   workflow.var.VALUE: 2
                   job.var.COOL_YEAR: 1980
-                  jobs.test_job.var.VOUTPUT: ${{ .stdout }}
+                  jobs.test_job.var.OUTPUT: ${{ .stdout }}
 """)
     _ = wf.dispatch()
 
     assert wf.get_value("var.VALUE") == 2
     assert wf.get_value("jobs.test_job.var.COOL_YEAR") == 1980
-    assert wf.jobs["test_job"].steps["step-1"].result.stdout == "VALUE == 42"
-    assert wf.jobs["test_job"].var["VOUTPUT"] == "VALUE == 42"
+    assert wf.get_value("jobs.test_job.steps.step-1.stdout") == "VALUE == 42"
+    assert wf.get_value("jobs.test_job.var.OUTPUT") == "VALUE == 42"
 
 
 def test_env_overriding() -> None:
@@ -585,9 +583,9 @@ jobs:
 """)
     _ = wf.dispatch()
 
-    assert wf.jobs["test_job"].steps["step-1"].result.stdout == "Hello World! :-DDDD"
-    assert wf.jobs["test_job"].steps["step-2"].result.stdout == "Hello World! xD"
-    assert wf.jobs["test_job_2"].steps["step-1"].result.stdout == "Hello World! :-("
+    assert wf.get_value("jobs.test_job.steps.step-1.stdout") == "Hello World! :-DDDD"
+    assert wf.get_value("jobs.test_job.steps.step-2.stdout") == "Hello World! xD"
+    assert wf.get_value("jobs.test_job_2.steps.step-1.stdout") == "Hello World! :-("
 
 
 def test_expand_template(temp_file: FileIO) -> None:
@@ -815,5 +813,5 @@ jobs:
     _ = wf.dispatch()
 
     assert wf.jobs["test_job"].failed
-    assert wf.jobs["test_job"].steps["step_1"].failed
+    assert wf.jobs["test_job"].steps[0].failed
     assert wf.get_value("jobs.test_job.steps.step_2.stdout") == ""

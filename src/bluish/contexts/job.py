@@ -41,12 +41,12 @@ class JobContext(contexts.InputOutputNode):
             **self.attrs.var,
         }
 
-        self.steps: dict[str, bluish.contexts.step.StepContext] = {}
+        self.steps: list[bluish.contexts.step.StepContext] = []
         for i, step_dict in enumerate(self.attrs.steps):
             step_def = contexts.StepDefinition(step_dict)
             step_def.ensure_property("id", f"step_{i+1}")
             step = bluish.contexts.step.StepContext(self, step_def)
-            self.steps[step_id] = step
+            self.steps.append(step)
 
     def dispatch(self) -> bluish.process.ProcessResult | None:
         self.status = bluish.core.ExecutionStatus.RUNNING
@@ -71,7 +71,7 @@ class JobContext(contexts.InputOutputNode):
                 info("Job skipped")
                 return None
 
-            for step in self.steps.values():
+            for step in self.steps:
                 result = step.dispatch()
                 if not result:
                     continue

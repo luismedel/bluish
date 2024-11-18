@@ -15,7 +15,7 @@ class RunCommand(bluish.actions.base.Action):
     SCHEMA = {
         "type": dict,
         "properties": {
-            "run": [str, None],
+            "run": str,
             "shell": [str, None],
         },
     }

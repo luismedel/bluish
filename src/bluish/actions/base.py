@@ -4,17 +4,7 @@ import bluish.contexts.step
 import bluish.process
 from bluish.contexts import Definition
 from bluish.logging import debug
-from bluish.schemas import KV, validate_schema
-
-
-class RequiredInputError(Exception):
-    def __init__(self, param: str):
-        super().__init__(f"Missing required input parameter: {param}")
-
-
-class RequiredAttributeError(Exception):
-    def __init__(self, param: str):
-        super().__init__(f"Missing required attribute: {param}")
+from bluish.schemas import validate_schema
 
 
 def _key_exists(key: str, attrs: Definition) -> bool:

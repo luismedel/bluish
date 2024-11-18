@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional, TypeVar, cast
 import bluish.core
 import bluish.process
 from bluish.logging import info
-from bluish.redacted_string import RedactedString
+from bluish.safe_string import SafeString
 from bluish.schemas import (
     JOB_SCHEMA,
     STEP_SCHEMA,
@@ -274,7 +274,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
         wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
         if varname in wf.secrets:
             return prepare_value(
-                RedactedString(cast(str, wf.secrets[varname]), "********")
+                SafeString(cast(str, wf.secrets[varname]), "********")
             )
     elif root == "jobs":
         wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
@@ -288,7 +288,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
     elif root == "steps":
         job = cast(bluish.contexts.job.JobContext, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
-        step = job.steps.get(step_id)
+        step = next((step for step in job.steps if step.id == step_id), None)
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_get_value(step, varname, raw)
@@ -302,7 +302,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
         node = _step_or_job(ctx)
         if varname in node.inputs:
             if varname in node.sensitive_inputs:
-                return prepare_value(RedactedString(node.inputs[varname], "********"))
+                return prepare_value(SafeString(node.inputs[varname], "********"))
             else:
                 return prepare_value(node.inputs[varname])
     elif root == "outputs":
@@ -346,7 +346,7 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     elif root == "steps":
         job = cast(bluish.contexts.job.JobContext, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
-        step = job.steps.get(step_id)
+        step = next((step for step in job.steps if step.id == step_id), None)
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_set_value(step, varname, value)

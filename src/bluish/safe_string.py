@@ -1,11 +1,11 @@
 from typing import cast
 
 
-class RedactedString(str):
+class SafeString(str):
     """A string with two values: one for logging and one for the actual value."""
 
-    def __new__(cls, value: str, redacted_value: str | None = None) -> "RedactedString":
-        result = cast(RedactedString, super().__new__(cls, value))
+    def __new__(cls, value: str, redacted_value: str | None = None) -> "SafeString":
+        result = cast(SafeString, super().__new__(cls, value))
         result.redacted_value = redacted_value or value
         return result
 

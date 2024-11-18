@@ -1,9 +1,33 @@
-from typing import Any, Union
+from typing import Any, Iterable, Union
+
+from bluish.safe_string import SafeString
+
+
+class InvalidTypeError(Exception):
+    def __init__(self, value: Any, types: str):
+        super().__init__(f"{value} is not any of the allowed types: {types}")
+
+
+class RequiredAttributeError(Exception):
+    def __init__(self, param: str):
+        super().__init__(f"Missing required attribute: {param}")
+
+
+class UnexpectedAttributesError(Exception):
+    def __init__(self, attrs: Iterable[str]):
+        super().__init__(f"Unexpected attributes: {attrs}")
+
 
 KV = {
     "type": dict,
-    "key_schema": {"type": str},
-    "value_schema": {"type": str},
+    "key_schema": str,
+    "value_schema": [str, bool, int, float, None],
+}
+
+STR_KV = {
+    "type": dict,
+    "key_schema": str,
+    "value_schema": str,
 }
 
 STR_LIST = {
@@ -17,7 +41,7 @@ STEP_SCHEMA = {
         "name": [str, None],
         "env": [KV, None],
         "var": [KV, None],
-        "secrets": [KV, None],
+        "secrets": [STR_KV, None],
         "secrets_file": [str, None],
         "env_file": [str, None],
         "uses": [str, None],
@@ -36,7 +60,7 @@ JOB_SCHEMA = {
         "name": [str, None],
         "env": [KV, None],
         "var": [KV, None],
-        "secrets": [KV, None],
+        "secrets": [STR_KV, None],
         "secrets_file": [str, None],
         "env_file": [str, None],
         "runs_on": [str, None],
@@ -56,7 +80,7 @@ WORKFLOW_SCHEMA = {
         "name": [str, None],
         "env": [KV, None],
         "var": [KV, None],
-        "secrets": [KV, None],
+        "secrets": [STR_KV, None],
         "secrets_file": [str, None],
         "env_file": [str, None],
         "runs_on": [str, None],
@@ -84,21 +108,32 @@ def _get_type_repr(t: type_def | None) -> str:
         return f"{t}"
 
 
-def _find_type(value: Any, t: type_def | None) -> dict | type | None:
-    if value is None or t is None:
-        return None
-    elif isinstance(t, list):
-        return next((tt for tt in t if _find_type(value, tt)), None)  # type: ignore
-    elif isinstance(t, dict):
-        if "type" not in t:
+def _find_type(value: Any, _def: type_def | None) -> dict | type | None:
+    def get_origin(t):
+        if t is None:
             return None
-        if t["type"] is Any:
-            return t
-        return t if type(value) is t["type"] else None
+        if isinstance(t, SafeString):
+            return str
+        return get_origin(t.__origin__) if "__origin__" in t.__dict__ else t
+
+    if value is None or _def is None:
+        return None
+    elif isinstance(_def, list):
+        for tt in _def:
+            if _find_type(value, tt):
+                return tt
+        return None
+    elif isinstance(_def, dict):
+        _t = _def.get("type")
+        if _t is None:
+            return None
+        if _t is Any:
+            return _def
+        return _def if get_origin(type(value)) is get_origin(_t) else None
     else:
-        if t is Any:
-            return t  # type: ignore
-        return t if type(value) is t else None
+        if _def is Any:
+            return _def  # type: ignore
+        return _def if get_origin(type(value)) is get_origin(_def) else None
 
 
 def _is_required(t: type_def | None) -> bool:
@@ -138,12 +173,13 @@ def validate_schema(
     ...
     ValueError: 42 is not any of the allowed types: <class 'str'>
     """
+    
+    if data is None and not _is_required(schema):
+        return
 
     type_def = _find_type(data, schema)
     if type_def is None:
-        raise ValueError(
-            f"{data} is not any of the allowed types: {_get_type_repr(schema)}"
-        )
+        raise InvalidTypeError(data, _get_type_repr(schema))
 
     if isinstance(type_def, type) or type_def is Any:
         return
@@ -164,13 +200,13 @@ def validate_schema(
                 if data.get(prop) is None:
                     if not _is_required(tdef):
                         continue
-                    raise ValueError(f"Missing required key: {prop}")
+                    raise RequiredAttributeError(f"Missing required key: {prop}")
                 validate_schema(tdef, data[prop])
 
         if reject_extra_keys and "properties" in type_def:
             extra_keys = set(data.keys()) - set(type_def["properties"].keys())
             if extra_keys:
-                raise ValueError(f"Extra keys: {extra_keys}")
+                raise UnexpectedAttributesError(extra_keys)
     elif type_def["type"] == list:
         assert isinstance(data, list)
         item_schema = type_def["item_schema"]

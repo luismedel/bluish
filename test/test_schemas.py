@@ -1,7 +1,7 @@
 
 from typing import Any
 
-from bluish.schemas import KV, validate_schema
+from bluish.schemas import KV, InvalidTypeError, RequiredAttributeError, validate_schema
 
 
 def test_happy() -> None:
@@ -39,8 +39,8 @@ def test_missing_key() -> None:
     try:
         validate_schema(schema, data)
         raise AssertionError("Should have raised an exception")
-    except ValueError as e:
-        assert str(e) == "Missing required key: env"
+    except RequiredAttributeError:
+        pass
 
 
 def test_optional_key() -> None:
@@ -111,5 +111,5 @@ def test_lists_ko() -> None:
     try:
         validate_schema(schema, data)
         raise AssertionError("Should have raised an exception")
-    except ValueError as e:
-        assert str(e) == "1 is not any of the allowed types: <class 'str'>"
+    except InvalidTypeError:
+        pass

@@ -4,7 +4,7 @@ from typing import Any, Callable
 import lark
 
 import bluish.contexts
-from bluish.redacted_string import RedactedString
+from bluish.safe_string import SafeString
 
 SENSITIVE_LITERALS = ("password", "secret", "token")
 
@@ -91,12 +91,12 @@ def concat(a: Any, b: Any) -> Any:
     if b is None:
         return a
 
-    result = RedactedString(str(a) + str(b))
+    result = SafeString(str(a) + str(b))
     result.redacted_value = (
-        a.redacted_value if isinstance(a, RedactedString) else str(a)
+        a.redacted_value if isinstance(a, SafeString) else str(a)
     )
     result.redacted_value += (
-        b.redacted_value if isinstance(b, RedactedString) else str(b)
+        b.redacted_value if isinstance(b, SafeString) else str(b)
     )
     return result
 
@@ -111,8 +111,8 @@ class ExprTransformer(lark.visitors.Transformer_InPlaceRecursive):
         return to_number(value)
 
     def str(self, value: str) -> str:
-        if isinstance(value, RedactedString):
-            return RedactedString(value[1:-1], value.redacted_value[1:-1])
+        if isinstance(value, SafeString):
+            return SafeString(value[1:-1], value.redacted_value[1:-1])
         elif isinstance(value, str):
             return value[1:-1]
         else:
