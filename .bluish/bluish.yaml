@@ -47,12 +47,6 @@ jobs:
           input_file: ./templates/pyproject.toml.template
           output_file: ./pyproject.toml
 
-      - name: Update metadata in setup.cfg
-        uses: core/expand-template
-        with:
-          input_file: ./templates/setup.cfg.template
-          output_file: ./setup.cfg
-
       - name: Update metadata in src/bluish/__main__.py
         uses: core/expand-template
         with:
