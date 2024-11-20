@@ -134,6 +134,8 @@ class ContextNode:
     def expand_expr(self, value: Any) -> Any:
         if isinstance(value, str):
             return _expand_expr(self, value)
+        elif isinstance(value, list):
+            return [_expand_expr(self, v) for v in value]
         else:
             return value
 
