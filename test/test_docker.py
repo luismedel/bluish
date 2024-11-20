@@ -53,6 +53,7 @@ jobs:
     create-docker:
         matrix:
             os: [alpine, ubuntu]
+
         steps:
             - name: "Build ${{{{ matrix.os }}}} Dockerfile"
               uses: core/expand-template
@@ -66,16 +67,16 @@ jobs:
                   dockerfile: {filename}
                   context: .
                   tags:
-                      - "bluish-test-${{{{ matrix.os }}}}:0.0.30"
+                      - "bluish-test-${{{{ matrix.os }}}}:test"
             - run: |
-                  echo "id=$(docker image ls -f reference=bluish-test-${{{{ matrix.os }}}}:0.0.30 -q)" >> "$BLUISH_OUTPUT"
+                  echo "id=$(docker image ls -f reference=bluish-test-${{{{ matrix.os }}}}:test -q)" >> "$BLUISH_OUTPUT"
               set:
                   workflow.var.docker-image-${{{{ matrix.os }}}}-id: ${{{{ outputs.id }}}}
             - run: |
-                  docker image rm $(docker image ls -f reference=bluish-test-${{{{ matrix.os }}}}:0.0.30 -q)
+                  docker image rm $(docker image ls -f reference=bluish-test-${{{{ matrix.os }}}}:test -q)
 """)
     _ = wf.dispatch()
 
-    assert wf.get_value("docker-image-alpine-id")
-    assert wf.get_value("docker-image-ubuntu-id")
-    assert wf.get_value("docker-image-alpine-id") != wf.get_value("docker-image-ubuntu-id")
+    assert wf.get_value("var.docker-image-alpine-id")
+    assert wf.get_value("var.docker-image-ubuntu-id")
+    assert wf.get_value("var.docker-image-alpine-id") != wf.get_value("var.docker-image-ubuntu-id")
