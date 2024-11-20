@@ -1,16 +1,72 @@
-from typing import Any, Iterable, Union
+from typing import Any as TAny, Iterable, Union, cast
 
+import inspect
+import bluish.process
 from bluish.safe_string import SafeString
 
 
+class Validator():
+    def __init__(self, *types: type | TAny | None, **kwargs: TAny) -> None:
+        self._types = tuple(_ensure_validator_instance(t) for t in types)
+        self._args = kwargs
+        self._default_value = self._get_default_raw_value()
+
+    @property
+    def has_default_value(self) -> bool:
+        return self._default_value is not None
+
+    def get_default_value(self) -> TAny | None:
+        if self._default_value is not None:
+            return self._default_value() if callable(self._default_value) else self._default_value
+        return None
+
+    def _get_default_raw_value(self) -> TAny | None:
+        _default: TAny | None = None
+
+        if "default" not in self._args:
+            for t in self._types:
+                if t is None or not isinstance(t, Validator):
+                    continue
+                
+                _default = t._get_default_raw_value()
+                if _default is not None:
+                    return _default
+        else:
+            return self._args["default"]
+
+    def validate(self, data: TAny) -> None:
+        for t in self._types:
+            if _validate_type(t, data):
+                return
+        raise InvalidTypeError(self, None, data)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self._types})"
+
+
+TTypeValidator = Union[type, Validator, None]
+
+
 class InvalidTypeError(Exception):
-    def __init__(self, value: Any, types: str):
-        super().__init__(f"{value} is not any of the allowed types: {types}")
+    def __init__(self, type: TTypeValidator, property: str | None, value: TAny | None) -> None:
+        super().__init__()
+        self.type = type
+        self.property = property
+        self.value = value
+
+    def __str__(self) -> str:
+        if self.property is None:
+            return f"{self.value} is not any of the allowed types: {self.type}"
+        return f"Property '{self.property}' with value {self.value} is not any of the allowed types: {self.type}"
 
 
 class RequiredAttributeError(Exception):
-    def __init__(self, param: str):
-        super().__init__(f"Missing required attribute: {param}")
+    def __init__(self, attr: str):
+        super().__init__()
+        self.attr = attr
+
+    def __str__(self) -> str:
+        return f"Required attribute '{self.attr}' is missing"
 
 
 class UnexpectedAttributesError(Exception):
@@ -18,212 +74,212 @@ class UnexpectedAttributesError(Exception):
         super().__init__(f"Unexpected attributes: {attrs}")
 
 
-KV = {
-    "type": dict,
-    "key_schema": str,
-    "value_schema": [str, bool, int, float, None],
-}
-
-STR_KV = {
-    "type": dict,
-    "key_schema": str,
-    "value_schema": str,
-}
-
-STR_LIST = {
-    "type": list,
-    "item_schema": str,
-}
-
-STEP_SCHEMA = {
-    "type": dict,
-    "properties": {
-        "name": [str, None],
-        "env": [KV, None],
-        "var": [KV, None],
-        "secrets": [STR_KV, None],
-        "secrets_file": [str, None],
-        "env_file": [str, None],
-        "uses": [str, None],
-        "if": [str, None],
-        "continue_on_error": [bool, None],
-        "set": [KV, None],
-        "echo_commands": [bool, None],
-        "echo_output": [bool, None],
-        "with": [Any, None],
-    },
-}
-
-JOB_SCHEMA = {
-    "type": dict,
-    "properties": {
-        "name": [str, None],
-        "env": [KV, None],
-        "var": [KV, None],
-        "secrets": [STR_KV, None],
-        "secrets_file": [str, None],
-        "env_file": [str, None],
-        "runs_on": [str, None],
-        "depends_on": [STR_LIST, None],
-        "continue_on_error": [bool, None],
-        "with": [Any, None],
-        "steps": {
-            "type": list,
-            "item_schema": STEP_SCHEMA,
-        },
-    },
-}
-
-WORKFLOW_SCHEMA = {
-    "type": dict,
-    "properties": {
-        "name": [str, None],
-        "env": [KV, None],
-        "var": [KV, None],
-        "secrets": [STR_KV, None],
-        "secrets_file": [str, None],
-        "env_file": [str, None],
-        "runs_on": [str, None],
-        "with": [Any, None],
-        "jobs": {
-            "type": dict,
-            "key_schema": str,
-            "value_schema": JOB_SCHEMA,
-        },
-    },
-}
-
-
-type_def = Union[type, dict, list, None]
-
-
-def _get_type_repr(t: type_def | None) -> str:
+def _validate_type(t: TTypeValidator, data: TAny) -> bool:
     if t is None:
-        return "None"
-    elif isinstance(t, list):
-        return " | ".join(_get_type_repr(tt) for tt in t)
-    elif isinstance(t, dict) and "type" in t:
-        return f"{t['type']}"
-    else:
-        return f"{t}"
-
-
-def _find_type(value: Any, _def: type_def | None) -> dict | type | None:
-    def get_origin(t):
-        if t is None:
-            return None
-        if isinstance(t, SafeString):
-            return str
-        return get_origin(t.__origin__) if "__origin__" in t.__dict__ else t
-
-    if value is None or _def is None:
-        return None
-    elif isinstance(_def, list):
-        for tt in _def:
-            if _find_type(value, tt):
-                return tt
-        return None
-    elif isinstance(_def, dict):
-        _t = _def.get("type")
-        if _t is None:
-            return None
-        if _t is Any:
-            return _def
-        return _def if get_origin(type(value)) is get_origin(_t) else None
-    else:
-        if _def is Any:
-            return _def  # type: ignore
-        return _def if get_origin(type(value)) is get_origin(_def) else None
-
-
-def _is_required(t: type_def | None) -> bool:
-    if t is None:
-        return False
-    elif isinstance(t, list):
-        return all(_is_required(tt) for tt in t)
-    elif isinstance(t, dict):
-        return t.get("required", True)
-    else:
         return True
+    elif t is TAny:
+        return True
+    elif isinstance(t, Validator):
+        t.validate(data)
+        return True
+    elif isinstance(data, cast(type, t)):
+        return True
+    else:
+        return False
+
+def _validate_or_fail(t: TTypeValidator, data: TAny) -> None:
+    if not _validate_type(t, data):
+        raise InvalidTypeError(t, None, data)
 
 
-def validate_schema(
-    schema: type_def, data: Any, reject_extra_keys: bool = False
-) -> None:
+def _ensure_validator_instance(t: TTypeValidator) -> TTypeValidator:
     """
-    Validate a data structure against a schema.
-
-    >>> validate_schema({"type": str}, "hello")
-    >>> validate_schema({"type": str}, 42)
-    Traceback (most recent call last):
-    ...
-    ValueError: 42 is not any of the allowed types: <class 'str'>
-    >>> validate_schema({"type": str}, {"hello": "world"})
-    Traceback (most recent call last):
-    ...
-    ValueError: {'hello': 'world'} is not any of the allowed types: <class 'str'>
-    >>> validate_schema({"type": dict, "key_schema": {"type": str}, "value_schema": {"type": str}}, {"hello": "world"})
-    >>> validate_schema({"type": dict, "key_schema": {"type": str}, "value_schema": {"type": str}}, {"hello": 42})
-    Traceback (most recent call last):
-    ...
-    ValueError: 42 is not any of the allowed types: <class 'str'>
-    >>> validate_schema({"type": list, "item_schema": {"type": str}}, ["hello", "world"])
-    >>> validate_schema({"type": list, "item_schema": {"type": str}}, ["hello", 42])
-    Traceback (most recent call last):
-    ...
-    ValueError: 42 is not any of the allowed types: <class 'str'>
+    Ensure that if we receive an uninstanciated Validator class, we return an instance of it.
     """
+    if t is None:
+        return None
+    elif inspect.isclass(t) and issubclass(t, Validator):
+        return t()
+    else:
+        return t
+
+
+class Str(Validator):
+    def __init__(self, **kwargs: TAny) -> None:
+        super().__init__(str, SafeString, **kwargs)
     
-    if data is None and not _is_required(schema):
-        return
+    def __repr__(self) -> str:
+        return "string"
 
-    type_def = _find_type(data, schema)
-    if type_def is None:
-        raise InvalidTypeError(data, _get_type_repr(schema))
+class Int(Validator):
+    def __init__(self, **kwargs: TAny) -> None:
+        super().__init__(int, **kwargs)
 
-    if isinstance(type_def, type) or type_def is Any:
-        return
+    def __repr__(self) -> str:
+        return "int"
 
-    if type_def["type"] == dict:
-        assert isinstance(data, dict)
-        if "key_schema" in type_def:
-            key_schema = type_def["key_schema"]
-            for key in data.keys():
-                validate_schema(key_schema, key)
-        if "value_schema" in type_def:
-            value_schema = type_def["value_schema"]
-            for val in data.values():
-                validate_schema(value_schema, val)
-        if "properties" in type_def:
-            properties: dict = type_def["properties"]
-            for prop, tdef in properties.items():
-                if data.get(prop) is None:
-                    if not _is_required(tdef):
-                        continue
-                    raise RequiredAttributeError(f"Missing required key: {prop}")
-                validate_schema(tdef, data[prop])
+class Float(Validator):
+    def __init__(self, **kwargs: TAny) -> None:
+        super().__init__(float, int, **kwargs)
+    
+    def __repr__(self) -> str:
+        return "float"
 
-        if reject_extra_keys and "properties" in type_def:
-            extra_keys = set(data.keys()) - set(type_def["properties"].keys())
-            if extra_keys:
-                raise UnexpectedAttributesError(extra_keys)
-    elif type_def["type"] == list:
-        assert isinstance(data, list)
-        item_schema = type_def["item_schema"]
+class Bool(Validator):
+    def __init__(self, **kwargs: TAny) -> None:
+        super().__init__(bool, **kwargs)
+    
+    def __repr__(self) -> str:
+        return "bool"
+
+class AnyType(Validator):
+    def __init__(self, **kwargs: TAny) -> None:
+        super().__init__(TAny, **kwargs)
+
+    def __repr__(self) -> str:
+        return "any"
+
+class Dict(Validator):
+    def __init__(self, key_schema: TTypeValidator = Str, value_schema: TTypeValidator = AnyType, **kwargs: TAny) -> None:
+        super().__init__(dict, **kwargs)
+        self._key_schema = _ensure_validator_instance(key_schema)
+        self._value_schema = _ensure_validator_instance(value_schema)
+
+    def validate(self, data: TAny) -> None:
+        if not isinstance(data, dict):
+            raise InvalidTypeError(self, None, data)
+
+        for k, v in data.items():
+            _validate_or_fail(self._key_schema, k)
+            _validate_or_fail(self._value_schema, v)
+
+    def __repr__(self) -> str:
+        return f"dict<{repr(self._key_schema)}, {repr(self._value_schema)}>"
+
+class Object(Validator):
+    def __init__(self, properties: dict[str, TTypeValidator], **kwargs: TAny) -> None:
+        reject_extra = kwargs.pop("reject_extra", True)
+
+        super().__init__(dict, **kwargs)
+        self._properties = {
+            k: _ensure_validator_instance(v)
+            for k, v in properties.items()
+        }
+        self._reject_extra = reject_extra
+
+    def validate(self, data: TAny) -> None:
+        if not isinstance(data, dict):
+            raise InvalidTypeError(self, None, data)
+
+        all_props = self._properties.items()
+        required = {k for k, t in all_props if not isinstance(t, Optional)}
+        optional = {k for k, t in all_props if isinstance(t, Optional)}
+        
+        def ensure_property(k: str) -> bool:
+            t = self._properties[k]
+            if k not in data and isinstance(t, Validator) and t.has_default_value:
+                data[k] = t.get_default_value()
+                return True
+            return False
+
+        def validate_property(k: str) -> None:
+            try:
+                _validate_or_fail(self._properties[k], data[k])
+            except InvalidTypeError:
+                raise InvalidTypeError(self._properties[k], k, data[k])
+
+        for k in required:
+            if k not in data:
+                if not ensure_property(k):
+                    raise RequiredAttributeError(k)
+                continue
+            try:
+                validate_property(k)
+            except InvalidTypeError as ex:
+                raise InvalidTypeError(self._properties[k], k, data[k]) from ex
+            except RequiredAttributeError as ex:
+                raise RequiredAttributeError(f"{k}.{ex.attr}") from ex
+
+        for k in optional:
+            if k not in data:
+                _ = ensure_property(k)
+                continue
+            try:
+                validate_property(k)
+            except InvalidTypeError as ex:
+                raise InvalidTypeError(self._properties[k], k, data[k]) from ex
+            except RequiredAttributeError as ex:
+                raise RequiredAttributeError(f"{k}.{ex.attr}") from ex
+    
+    def __repr__(self) -> str:
+        return f"object<{', '.join(f'{k}: {v}' for k, v in self._properties.items())}>"
+
+
+class List(Validator):
+    def __init__(self, item_schema: type | Validator, **kwargs: TAny) -> None:
+        super().__init__(list, **kwargs)
+        self._item_schema = _ensure_validator_instance(item_schema)
+
+    def validate(self, data: TAny) -> None:
+        if not isinstance(data, list):
+            raise InvalidTypeError(self, None, data)
+
         for item in data:
-            validate_schema(item_schema, item)
-    elif (
-        type_def["type"] not in (str, int, float, bool) and type_def["type"] is not Any
-    ):
-        raise ValueError(f"Invalid type: {type_def['type']}")
+            _validate_or_fail(self._item_schema, item)
+
+    def __repr__(self) -> str:
+        return f"list<{repr(self._item_schema)}>"
 
 
-def get_extra_properties(schema: type_def, data: dict) -> dict:
-    """
-    Get the properties in the data not present in the schema properties.
-    """
-    if type_def is Any or not isinstance(schema, dict) or not isinstance(data, dict):
-        return {}
+class Optional(Validator):
+    def __init__(self, *types: type | Validator, **kwargs: TAny) -> None:
+        super().__init__(None, *types, **kwargs)
 
-    properties = schema["properties"].keys()
-    return {k: v for k, v in data.items() if k not in properties}
+    def __repr__(self) -> str:
+        return f"Optional<{', '.join(repr(t) for t in self._types)}>"
+
+
+DefaultDict = Dict(default=dict)
+
+DefaultStringDict = Dict(Str, Str, default=dict)
+
+DefaultStringList = List(Str, default=list)
+
+_COMMON_PROPERTIES = {
+    "id": Optional(Str),
+    "name": Optional(Str),
+    "description": Optional(Str),
+    "env": DefaultDict,
+    "var": DefaultDict,
+    "secrets": DefaultStringDict,
+    "secrets_file": Optional(Str),
+    "env_file": Optional(Str),
+    "if": Optional(Str, Bool),
+    "echo_commands": Bool(default=True),
+    "echo_output": Bool(default=True),
+    "continue_on_error": Bool(default=False),
+    "with": DefaultDict,
+    "outputs": DefaultDict,
+    "set": DefaultDict,
+}
+
+STEP_SCHEMA = Object({
+    **_COMMON_PROPERTIES,
+    "uses": Str(default=""),
+    "shell": Str(default=bluish.process.DEFAULT_SHELL),
+})
+
+
+JOB_SCHEMA = Object({
+    **_COMMON_PROPERTIES,
+    "runs_on": Optional(Str),
+    "depends_on": DefaultStringList,
+    "steps": List(STEP_SCHEMA),
+})
+
+
+WORKFLOW_SCHEMA = Object({
+    **_COMMON_PROPERTIES,
+    "runs_on": Optional(Str),
+    "jobs": Dict(Str, JOB_SCHEMA),
+})

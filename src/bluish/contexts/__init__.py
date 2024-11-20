@@ -11,8 +11,7 @@ from bluish.schemas import (
     JOB_SCHEMA,
     STEP_SCHEMA,
     WORKFLOW_SCHEMA,
-    get_extra_properties,
-    validate_schema,
+    Validator,
 )
 from bluish.utils import safe_string
 
@@ -20,11 +19,11 @@ TResult = TypeVar("TResult")
 
 
 class Definition:
-    SCHEMA: dict[str, Any] = {}
+    SCHEMA: Validator | None = None
 
-    def __init__(self, attrs: dict[str, Any]):
-        self.__dict__["_attrs"] = attrs
-        _ = self._validate_attrs(attrs)
+    def __init__(self, **kwargs: Any):
+        self.__dict__["_attrs"] = kwargs
+        self._validate_attrs(kwargs)
 
     def as_dict(self) -> dict[str, Any]:
         return self.__dict__["_attrs"]
@@ -32,18 +31,9 @@ class Definition:
     def get(self, name: str, default: Any = None) -> Any:
         return self.__dict__["_attrs"].get(name, default)
 
-    def _validate_attrs(self, attrs: dict[str, Any]) -> dict[str, Any]:
+    def _validate_attrs(self, attrs: dict[str, Any]):
         if self.SCHEMA:
-            validate_schema(self.SCHEMA, attrs)
-            return get_extra_properties(self.SCHEMA, attrs)
-        else:
-            return attrs
-
-    def ensure_property(self, name: str, default_value: Any) -> None:
-        if name.startswith("_"):
-            name = name[1:]
-        if name not in self.attrs:
-            self.__dict__["_attrs"][name] = default_value
+            self.SCHEMA.validate(attrs)
 
     def __getattr__(self, name: str) -> Any:
         if name == "attrs":
@@ -85,19 +75,45 @@ class ContextNode:
         self.parent = parent
         self.attrs = definition
 
-        self.attrs.ensure_property("env", {})
-        self.attrs.ensure_property("var", {})
-
-        self.id: str = self.attrs.id
-        self.env = dict(self.attrs.env)
-        self.var = dict(self.attrs.var)
-        self.outputs: dict[str, Any] = {}
-        self.inputs: dict[str, Any] = {}
         self.result = bluish.process.ProcessResult()
         self.failed = False
         self.status = bluish.core.ExecutionStatus.PENDING
 
         self._expression_parser: Callable[[str], Any] | None = None
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.__dict__ or name in self.attrs
+    
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.attrs, name)
+    
+    @property
+    def id(self) -> str:
+        return self.attrs.id
+    
+    @property
+    def name(self) -> str:
+        return self.attrs.name
+
+    @property
+    def env(self) -> dict[str, Any]:
+        return self.attrs.env
+    
+    @property
+    def var(self) -> dict[str, Any]:
+        return self.attrs.var
+    
+    @property
+    def secrets(self) -> dict[str, str]:
+        return self.attrs.secrets
+    
+    @property
+    def inputs(self) -> dict[str, Any]:
+        return self.attrs._with
+    
+    @property
+    def outputs(self) -> dict[str, Any]:
+        return self.attrs.outputs
 
     @property
     def display_name(self) -> str:
@@ -140,7 +156,7 @@ class ContextNode:
         result = default
         ctx: ContextNode | None = self
         while ctx is not None:
-            if hasattr(ctx, name):
+            if name in ctx:
                 result = cast(TResult, getattr(ctx, name))
                 break
             elif name in ctx.attrs:
@@ -163,7 +179,6 @@ class InputOutputNode(ContextNode):
         info("with:")
         for k, v in self.attrs._with.items():
             v = self.expand_expr(v)
-            self.inputs[k] = v
             if k in self.sensitive_inputs:
                 info(f"  {k}: ********")
             else:

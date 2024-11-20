@@ -17,29 +17,21 @@ class WorkflowContext(bluish.contexts.ContextNode):
     def __init__(self, definition: bluish.contexts.Definition) -> None:
         super().__init__(None, definition)
 
-        self.attrs.ensure_property("var", {})
-        self.attrs.ensure_property("secrets", {})
-        self.attrs.ensure_property("jobs", {})
-
-        self.secrets = {
-            **self.attrs.secrets,
-            **dotenv_values(self.attrs.secrets_file or ".secrets"),
-        }
-
-        self.env = {
-            **self.attrs.env,
-        }
+        self.secrets.update({
+            k: v
+            for k, v in dotenv_values(self.attrs.secrets_file or ".secrets").items()
+            if v is not None
+        })
 
         self.sys_env = {
             **os.environ,
             **dotenv_values(self.attrs.env_file or ".env"),
         }
 
-        self.jobs = {
-            k: bluish.contexts.job.JobContext(self, k, bluish.contexts.JobDefinition(v))
-            for k, v in self.attrs.jobs.items()
-        }
-        self.var = dict(self.attrs.var)
+        self.jobs: dict = {}
+        for k, v in self.attrs.jobs.items():
+            v["id"] = k
+            self.jobs[k] = bluish.contexts.job.JobContext(self, bluish.contexts.JobDefinition(**v))
 
         self.runs_on_host: dict[str, Any] | None = None
 
@@ -103,6 +95,8 @@ class WorkflowContext(bluish.contexts.ContextNode):
 
         if job.attrs.matrix:
             for matrix_tuple in product(*job.attrs.matrix.values()):
+                job.reset()
+
                 job.matrix = {
                     key: self.expand_expr(value)
                     for key, value in zip(job.attrs.matrix.keys(), matrix_tuple)

@@ -6,6 +6,7 @@ import bluish.contexts.job
 import bluish.contexts.step
 import bluish.process
 from bluish.logging import error, info
+from bluish.schemas import Object, Optional, Str, Int
 from bluish.utils import safe_string
 
 
@@ -54,15 +55,11 @@ def cleanup_environment(step: bluish.contexts.step.StepContext) -> None:
 class Checkout(bluish.actions.base.Action):
     FQN: str = "git/checkout"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "repository": str,
-            "depth": [int, None],
-            "branch": [str, None],
-        },
-        "required": ["repository"],
-    }
+    INPUTS_SCHEMA = Object({
+        "repository": Str,
+        "depth": Optional(Int),
+        "branch": Optional(Str),
+    })
 
     SENSITIVE_INPUTS: tuple[str, ...] = ("ssh_key_file", "password")
 

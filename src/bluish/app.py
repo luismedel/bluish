@@ -81,7 +81,7 @@ def workflow_from_file(file: str) -> WorkflowContext:
     if not yaml_contents:
         fatal("No workflow file found.")
 
-    definition = WorkflowDefinition(yaml.safe_load(yaml_contents))
+    definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
     return WorkflowContext(definition)
 
 
@@ -166,7 +166,7 @@ def bluish_cli(
     if not yaml_contents:
         fatal("No workflow file found.")
 
-    definition = WorkflowDefinition(yaml.safe_load(yaml_contents))
+    definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
     wf = WorkflowContext(definition)
     ctx.obj = wf
 

@@ -15,36 +15,27 @@ class JobContext(contexts.InputOutputNode):
     def __init__(
         self,
         parent: contexts.ContextNode,
-        step_id: str,
         definition: contexts.Definition,
     ):
         import bluish.contexts.step
 
         super().__init__(parent, definition)
 
-        self.id = step_id
+        self.runs_on_host: dict[str, Any] | None
+        self.matrix: dict[str, Any]
+        self.steps: list[bluish.contexts.step.StepContext]
+        self.reset()
 
-        self.runs_on_host: dict[str, Any] | None = None
+    def reset(self) -> None:
+        import bluish.contexts.step
 
-        self.attrs.ensure_property("steps", [])
-        self.attrs.ensure_property("continue_on_error", False)
+        self.runs_on_host = None
+        self.matrix = {}
+        self.steps = []
 
-        self.matrix: dict[str, Any] = {}
-
-        self.env = {
-            **parent.env,
-            **self.attrs.env,
-        }
-
-        self.var = {
-            **parent.var,
-            **self.attrs.var,
-        }
-
-        self.steps: list[bluish.contexts.step.StepContext] = []
         for i, step_dict in enumerate(self.attrs.steps):
-            step_def = contexts.StepDefinition(step_dict)
-            step_def.ensure_property("id", f"step_{i+1}")
+            step_dict["id"] = step_dict.get("id", f"step_{i+1}")
+            step_def = contexts.StepDefinition(**step_dict)
             step = bluish.contexts.step.StepContext(self, step_def)
             self.steps.append(step)
 

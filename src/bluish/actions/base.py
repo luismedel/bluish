@@ -1,10 +1,10 @@
-from typing import Sequence
+from typing import Any, Sequence
 
 import bluish.contexts.step
 import bluish.process
 from bluish.contexts import Definition
 from bluish.logging import debug
-from bluish.schemas import validate_schema
+from bluish.schemas import Validator
 
 
 def _key_exists(key: str, attrs: Definition) -> bool:
@@ -15,8 +15,8 @@ def _key_exists(key: str, attrs: Definition) -> bool:
 class Action:
     FQN: str = ""
 
-    SCHEMA: dict = {}
-    INPUTS_SCHEMA: dict = {}
+    SCHEMA: Validator | None = None
+    INPUTS_SCHEMA: Validator | None = None
     SENSITIVE_INPUTS: Sequence[str] = tuple()
 
     def run(
@@ -28,9 +28,9 @@ class Action:
         self, step: bluish.contexts.step.StepContext
     ) -> bluish.process.ProcessResult:
         if self.SCHEMA:
-            validate_schema(self.SCHEMA, step.attrs.as_dict())
+            self.SCHEMA.validate(step.attrs.as_dict())
         if self.INPUTS_SCHEMA and step.attrs._with:
-            validate_schema(self.INPUTS_SCHEMA, step.attrs._with)
+            self.INPUTS_SCHEMA.validate(step.attrs._with)
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
         step.log_inputs()

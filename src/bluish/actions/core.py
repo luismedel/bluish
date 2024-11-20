@@ -7,18 +7,15 @@ import bluish.contexts.job
 import bluish.contexts.step
 import bluish.process
 from bluish.logging import error, info
+from bluish.schemas import List, Object, Optional, Str, Int
 from bluish.utils import safe_string
 
 
 class RunCommand(bluish.actions.base.Action):
     FQN: str = ""
-    SCHEMA = {
-        "type": dict,
-        "properties": {
-            "run": str,
-            "shell": [str, None],
-        },
-    }
+    SCHEMA = Object({
+        "run": Str,
+    })
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -51,15 +48,12 @@ class RunCommand(bluish.actions.base.Action):
 class ExpandTemplate(bluish.actions.base.Action):
     FQN: str = "core/expand-template"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "input": [str, None],
-            "input_file": [str, None],
-            "output_file": str,
-            "chmod": [int, str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object({
+        "input": Optional(Str, List(Str)),
+        "input_file": Optional(Str),
+        "output_file": Str,
+        "chmod": Optional(Int, Str),
+    })
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -95,14 +89,11 @@ class ExpandTemplate(bluish.actions.base.Action):
 class UploadFile(bluish.actions.base.Action):
     FQN: str = "core/upload-file"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "source_file": str,
-            "destination_file": str,
-            "chmod": [int, str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object({
+        "source_file": Str,
+        "destination_file": Str,
+        "chmod": Optional(Int, Str),
+    })
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -146,14 +137,11 @@ class UploadFile(bluish.actions.base.Action):
 class DownloadFile(bluish.actions.base.Action):
     FQN: str = "core/download-file"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "source_file": str,
-            "destination_file": str,
-            "chmod": [int, str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object({
+        "source_file": Str,
+        "destination_file": Str,
+        "chmod": Optional(Int, Str),
+    })
 
     def run(
         self, step: bluish.contexts.step.StepContext

@@ -5,7 +5,7 @@ import bluish.contexts.job
 import bluish.contexts.step
 import bluish.process
 from bluish.logging import debug, error, info, warning
-from bluish.schemas import STR_LIST
+from bluish.schemas import DefaultStringList, List, Object, Optional, Str
 from bluish.utils import decorate_for_log
 
 
@@ -51,14 +51,11 @@ def docker_ps(
 class Login(bluish.actions.base.Action):
     FQN: str = "docker/login"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "username": str,
-            "password": str,
-            "registry": [str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object({
+        "username": Str,
+        "password": Str,
+        "registry": Optional(Str),
+    })
 
     SENSITIVE_INPUTS: tuple[str, ...] = ("password",)
 
@@ -103,14 +100,11 @@ class Logout(bluish.actions.base.Action):
 class Build(bluish.actions.base.Action):
     FQN: str = "docker/build"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "dockerfile": [str, None],
-            "tags": [str, STR_LIST],
-            "context": [str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object({
+        "dockerfile": Optional(Str),
+        "tags": Optional(Str, List(Str)),
+        "context": Optional(Str),
+    })
 
     def run(
         self, step: bluish.contexts.step.StepContext
