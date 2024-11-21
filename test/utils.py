@@ -1,7 +1,7 @@
 
-from bluish.contexts import WorkflowDefinition
 import bluish.contexts.workflow
 import yaml
+from bluish.contexts import WorkflowDefinition
 
 
 def create_workflow(yaml_definition: str) -> bluish.contexts.workflow.WorkflowContext:

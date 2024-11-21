@@ -92,12 +92,8 @@ def concat(a: Any, b: Any) -> Any:
         return a
 
     result = SafeString(str(a) + str(b))
-    result.redacted_value = (
-        a.redacted_value if isinstance(a, SafeString) else str(a)
-    )
-    result.redacted_value += (
-        b.redacted_value if isinstance(b, SafeString) else str(b)
-    )
+    result.redacted_value = a.redacted_value if isinstance(a, SafeString) else str(a)
+    result.redacted_value += b.redacted_value if isinstance(b, SafeString) else str(b)
     return result
 
 

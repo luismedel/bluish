@@ -4,13 +4,13 @@ from io import FileIO
 from test.utils import create_workflow
 
 import pytest
-from bluish.schemas import RequiredAttributeError
 from bluish.contexts import CircularDependencyError
 from bluish.core import (
     ExecutionStatus,
     init_commands,
 )
 from bluish.process import run
+from bluish.schemas import RequiredAttributeError
 
 
 @pytest.fixture(scope="session", autouse=True)

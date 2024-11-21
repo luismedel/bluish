@@ -5,7 +5,7 @@ import bluish.contexts.job
 import bluish.contexts.step
 import bluish.process
 from bluish.logging import debug, error, info, warning
-from bluish.schemas import DefaultStringList, List, Object, Optional, Str
+from bluish.schemas import Bool, DefaultStringDict, List, Object, Optional, Str
 from bluish.utils import decorate_for_log
 
 
@@ -51,11 +51,13 @@ def docker_ps(
 class Login(bluish.actions.base.Action):
     FQN: str = "docker/login"
 
-    INPUTS_SCHEMA = Object({
-        "username": Str,
-        "password": Str,
-        "registry": Optional(Str),
-    })
+    INPUTS_SCHEMA = Object(
+        {
+            "username": Str,
+            "password": Str,
+            "registry": Optional(Str),
+        }
+    )
 
     SENSITIVE_INPUTS: tuple[str, ...] = ("password",)
 
@@ -100,11 +102,13 @@ class Logout(bluish.actions.base.Action):
 class Build(bluish.actions.base.Action):
     FQN: str = "docker/build"
 
-    INPUTS_SCHEMA = Object({
-        "dockerfile": Optional(Str),
-        "tags": Optional(Str, List(Str)),
-        "context": Optional(Str),
-    })
+    INPUTS_SCHEMA = Object(
+        {
+            "dockerfile": Optional(Str),
+            "tags": Optional(Str, List(Str)),
+            "context": Optional(Str),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -131,12 +135,11 @@ class Build(bluish.actions.base.Action):
 class GetPid(bluish.actions.base.Action):
     FQN: str = "docker/get-pid"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "name": str,
-        },
-    }
+    INPUTS_SCHEMA = Object(
+        {
+            "name": Str,
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -163,24 +166,23 @@ class GetPid(bluish.actions.base.Action):
 class Run(bluish.actions.base.Action):
     FQN: str = "docker/run"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "image": str,
-            "name": str,
-            "fail_if_running": [bool, None],
-            "ports": [str, list[str], None],
-            "volumes": [str, list[str], None],
-            "env": [str, list[str], None],
-            "env_file": [str, list[str], None],
-            "network": [str, None],
-            "label": [str, list[str], None],
-            "pull": [str, None],
-            "user": [str, None],
-            "remove": [bool, None],
-            "quiet": [bool, None],
-        },
-    }
+    INPUTS_SCHEMA = Object(
+        {
+            "image": Str,
+            "name": Str,
+            "fail_if_running": Optional(bool),
+            "ports": Optional(Str, List(Str)),
+            "volumes": Optional(Str, List(Str)),
+            "env": Optional(DefaultStringDict),
+            "env_file": Optional(Str),
+            "network": Optional(Str),
+            "label": Optional(Str, List(Str)),
+            "pull": Optional(Str),
+            "user": Optional(Str),
+            "remove": Optional(bool),
+            "quiet": Optional(bool),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -240,17 +242,16 @@ class Run(bluish.actions.base.Action):
 class Stop(bluish.actions.base.Action):
     FQN: str = "docker/stop"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "name": [str, None],
-            "pid": [str, None],
-            "signal": [str, None],
-            "time": [str, None],
-            "remove": [bool, None],
-            "fail_if_not_found": [bool, None],
-        },
-    }
+    INPUTS_SCHEMA = Object(
+        {
+            "name": Optional(Str),
+            "pid": Optional(Str),
+            "signal": Optional(Str),
+            "time": Optional(Str),
+            "remove": Optional(bool),
+            "fail_if_not_found": Optional(bool),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -321,17 +322,16 @@ class Stop(bluish.actions.base.Action):
 class Exec(bluish.actions.base.Action):
     FQN: str = "docker/exec"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "name": [str, None],
-            "pid": [str, None],
-            "run": str,
-            "env": [str, list[str], None],
-            "env_file": [str, list[str], None],
-            "workdir": [str, None],
-        },
-    }
+    INPUTS_SCHEMA = Object(
+        {
+            "name": Optional(Str),
+            "pid": Optional(Str),
+            "run": Str,
+            "env": Optional(DefaultStringDict),
+            "env_file": Optional(Str),
+            "workdir": Optional(Str),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext
@@ -406,16 +406,15 @@ class Exec(bluish.actions.base.Action):
 class CreateNetwork(bluish.actions.base.Action):
     FQN: str = "docker/create-network"
 
-    INPUTS_SCHEMA = {
-        "type": dict,
-        "properties": {
-            "name": str,
-            "fail_if_exists": [bool, None],
-            "label": [str, list[str], None],
-            "ingress": [bool, None],
-            "internal": [bool, None],
-        },
-    }
+    INPUTS_SCHEMA = Object(
+        {
+            "name": Str,
+            "fail_if_exists": Optional(bool),
+            "label": Optional(Str, List(Str)),
+            "ingress": Optional(Bool),
+            "internal": Optional(Bool),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext

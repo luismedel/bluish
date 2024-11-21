@@ -1,11 +1,12 @@
-from typing import Any as TAny, Iterable, Union, cast
-
 import inspect
+from typing import Any as TAny
+from typing import Iterable, Union, cast
+
 import bluish.process
 from bluish.safe_string import SafeString
 
 
-class Validator():
+class Validator:
     def __init__(self, *types: type | TAny | None, **kwargs: TAny) -> None:
         self._types = tuple(_ensure_validator_instance(t) for t in types)
         self._args = kwargs
@@ -17,7 +18,11 @@ class Validator():
 
     def get_default_value(self) -> TAny | None:
         if self._default_value is not None:
-            return self._default_value() if callable(self._default_value) else self._default_value
+            return (
+                self._default_value()
+                if callable(self._default_value)
+                else self._default_value
+            )
         return None
 
     def _get_default_raw_value(self) -> TAny | None:
@@ -27,10 +32,11 @@ class Validator():
             for t in self._types:
                 if t is None or not isinstance(t, Validator):
                     continue
-                
+
                 _default = t._get_default_raw_value()
                 if _default is not None:
                     return _default
+            return None
         else:
             return self._args["default"]
 
@@ -48,7 +54,9 @@ TTypeValidator = Union[type, Validator, None]
 
 
 class InvalidTypeError(Exception):
-    def __init__(self, type: TTypeValidator, property: str | None, value: TAny | None) -> None:
+    def __init__(
+        self, type: TTypeValidator, property: str | None, value: TAny | None
+    ) -> None:
         super().__init__()
         self.type = type
         self.property = property
@@ -87,6 +95,7 @@ def _validate_type(t: TTypeValidator, data: TAny) -> bool:
     else:
         return False
 
+
 def _validate_or_fail(t: TTypeValidator, data: TAny) -> None:
     if not _validate_type(t, data):
         raise InvalidTypeError(t, None, data)
@@ -107,9 +116,10 @@ def _ensure_validator_instance(t: TTypeValidator) -> TTypeValidator:
 class Str(Validator):
     def __init__(self, **kwargs: TAny) -> None:
         super().__init__(str, SafeString, **kwargs)
-    
+
     def __repr__(self) -> str:
         return "string"
+
 
 class Int(Validator):
     def __init__(self, **kwargs: TAny) -> None:
@@ -118,19 +128,22 @@ class Int(Validator):
     def __repr__(self) -> str:
         return "int"
 
+
 class Float(Validator):
     def __init__(self, **kwargs: TAny) -> None:
         super().__init__(float, int, **kwargs)
-    
+
     def __repr__(self) -> str:
         return "float"
+
 
 class Bool(Validator):
     def __init__(self, **kwargs: TAny) -> None:
         super().__init__(bool, **kwargs)
-    
+
     def __repr__(self) -> str:
         return "bool"
+
 
 class AnyType(Validator):
     def __init__(self, **kwargs: TAny) -> None:
@@ -139,8 +152,14 @@ class AnyType(Validator):
     def __repr__(self) -> str:
         return "any"
 
+
 class Dict(Validator):
-    def __init__(self, key_schema: TTypeValidator = Str, value_schema: TTypeValidator = AnyType, **kwargs: TAny) -> None:
+    def __init__(
+        self,
+        key_schema: TTypeValidator = Str,
+        value_schema: TTypeValidator = AnyType,
+        **kwargs: TAny,
+    ) -> None:
         super().__init__(dict, **kwargs)
         self._key_schema = _ensure_validator_instance(key_schema)
         self._value_schema = _ensure_validator_instance(value_schema)
@@ -156,14 +175,14 @@ class Dict(Validator):
     def __repr__(self) -> str:
         return f"dict<{repr(self._key_schema)}, {repr(self._value_schema)}>"
 
+
 class Object(Validator):
     def __init__(self, properties: dict[str, TTypeValidator], **kwargs: TAny) -> None:
         reject_extra = kwargs.pop("reject_extra", True)
 
         super().__init__(dict, **kwargs)
         self._properties = {
-            k: _ensure_validator_instance(v)
-            for k, v in properties.items()
+            k: _ensure_validator_instance(v) for k, v in properties.items()
         }
         self._reject_extra = reject_extra
 
@@ -174,7 +193,7 @@ class Object(Validator):
         all_props = self._properties.items()
         required = {k for k, t in all_props if not isinstance(t, Optional)}
         optional = {k for k, t in all_props if isinstance(t, Optional)}
-        
+
         def ensure_property(k: str) -> bool:
             t = self._properties[k]
             if k not in data and isinstance(t, Validator) and t.has_default_value:
@@ -210,7 +229,7 @@ class Object(Validator):
                 raise InvalidTypeError(self._properties[k], k, data[k]) from ex
             except RequiredAttributeError as ex:
                 raise RequiredAttributeError(f"{k}.{ex.attr}") from ex
-    
+
     def __repr__(self) -> str:
         return f"object<{', '.join(f'{k}: {v}' for k, v in self._properties.items())}>"
 
@@ -263,23 +282,29 @@ _COMMON_PROPERTIES = {
     "set": DefaultDict,
 }
 
-STEP_SCHEMA = Object({
-    **_COMMON_PROPERTIES,
-    "uses": Str(default=""),
-    "shell": Str(default=bluish.process.DEFAULT_SHELL),
-})
+STEP_SCHEMA = Object(
+    {
+        **_COMMON_PROPERTIES,
+        "uses": Str(default=""),
+        "shell": Str(default=bluish.process.DEFAULT_SHELL),
+    }
+)
 
 
-JOB_SCHEMA = Object({
-    **_COMMON_PROPERTIES,
-    "runs_on": Optional(Str),
-    "depends_on": DefaultStringList,
-    "steps": List(STEP_SCHEMA),
-})
+JOB_SCHEMA = Object(
+    {
+        **_COMMON_PROPERTIES,
+        "runs_on": Optional(Str),
+        "depends_on": DefaultStringList,
+        "steps": List(STEP_SCHEMA),
+    }
+)
 
 
-WORKFLOW_SCHEMA = Object({
-    **_COMMON_PROPERTIES,
-    "runs_on": Optional(Str),
-    "jobs": Dict(Str, JOB_SCHEMA),
-})
+WORKFLOW_SCHEMA = Object(
+    {
+        **_COMMON_PROPERTIES,
+        "runs_on": Optional(Str),
+        "jobs": Dict(Str, JOB_SCHEMA),
+    }
+)

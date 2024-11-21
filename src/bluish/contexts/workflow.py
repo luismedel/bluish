@@ -17,11 +17,13 @@ class WorkflowContext(bluish.contexts.ContextNode):
     def __init__(self, definition: bluish.contexts.Definition) -> None:
         super().__init__(None, definition)
 
-        self.secrets.update({
-            k: v
-            for k, v in dotenv_values(self.attrs.secrets_file or ".secrets").items()
-            if v is not None
-        })
+        self.secrets.update(
+            {
+                k: v
+                for k, v in dotenv_values(self.attrs.secrets_file or ".secrets").items()
+                if v is not None
+            }
+        )
 
         self.sys_env = {
             **os.environ,
@@ -31,7 +33,9 @@ class WorkflowContext(bluish.contexts.ContextNode):
         self.jobs: dict = {}
         for k, v in self.attrs.jobs.items():
             v["id"] = k
-            self.jobs[k] = bluish.contexts.job.JobContext(self, bluish.contexts.JobDefinition(**v))
+            self.jobs[k] = bluish.contexts.job.JobContext(
+                self, bluish.contexts.JobDefinition(**v)
+            )
 
         self.runs_on_host: dict[str, Any] | None = None
 

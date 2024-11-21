@@ -83,14 +83,14 @@ class ContextNode:
 
     def __contains__(self, name: str) -> bool:
         return name in self.__dict__ or name in self.attrs
-    
+
     def __getattr__(self, name: str) -> Any:
         return getattr(self.attrs, name)
-    
+
     @property
     def id(self) -> str:
         return self.attrs.id
-    
+
     @property
     def name(self) -> str:
         return self.attrs.name
@@ -98,19 +98,19 @@ class ContextNode:
     @property
     def env(self) -> dict[str, Any]:
         return self.attrs.env
-    
+
     @property
     def var(self) -> dict[str, Any]:
         return self.attrs.var
-    
+
     @property
     def secrets(self) -> dict[str, str]:
         return self.attrs.secrets
-    
+
     @property
     def inputs(self) -> dict[str, Any]:
         return self.attrs._with
-    
+
     @property
     def outputs(self) -> dict[str, Any]:
         return self.attrs.outputs
@@ -290,9 +290,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
     elif root == "secrets":
         wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
         if varname in wf.secrets:
-            return prepare_value(
-                SafeString(cast(str, wf.secrets[varname]), "********")
-            )
+            return prepare_value(SafeString(cast(str, wf.secrets[varname]), "********"))
     elif root == "jobs":
         wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
         job_id, varname = varname.split(".", maxsplit=1)

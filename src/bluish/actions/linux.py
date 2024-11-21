@@ -11,10 +11,12 @@ from bluish.schemas import DefaultStringList, Object, Optional, Str
 class InstallPackages(bluish.actions.base.Action):
     FQN: str = "linux/install-packages"
 
-    INPUTS_SCHEMA = Object({
-        "packages": DefaultStringList,
-        "flavor": Optional(Str),
-    })
+    INPUTS_SCHEMA = Object(
+        {
+            "packages": DefaultStringList,
+            "flavor": Optional(Str),
+        }
+    )
 
     def run(
         self, step: bluish.contexts.step.StepContext

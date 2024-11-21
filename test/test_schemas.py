@@ -1,5 +1,15 @@
 
-from bluish.schemas import DefaultDict, Dict, AnyType, List, Object, Optional, Str, InvalidTypeError, RequiredAttributeError
+from bluish.schemas import (
+    AnyType,
+    DefaultDict,
+    Dict,
+    InvalidTypeError,
+    List,
+    Object,
+    Optional,
+    RequiredAttributeError,
+    Str,
+)
 
 
 def test_happy() -> None:
