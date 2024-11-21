@@ -1,6 +1,6 @@
 [metadata]
 name = bluish
 version = ${{ var.project_version }}
-author = Luis Medel
+author = Luis Medel <luis@luismedel.com>
 author_email = luis@luismedel.com
 url = https://github.com/luismedel/bluish

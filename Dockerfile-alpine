@@ -1,0 +1,9 @@
+FROM alpine:latest
+RUN apk add --no-cache \
+      bash \
+      python3~3.12 \
+      py-pip \
+      py3-virtualenv \
+      git; \
+      \
+      pip3 install bluish==0.8.2.1 --break-system-packages

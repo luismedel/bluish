@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.urls]
-"url" = "https://github.com/luismedel/bluish"
+"Github" = "https://github.com/luismedel/bluish"
 "Homepage" = "https://github.com/luismedel/bluish"
 
 [tool.setuptools.package-data]
