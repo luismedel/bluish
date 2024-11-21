@@ -1,0 +1,15 @@
+[metadata]
+name = bluish
+version = ${{ var.project_version }}
+author = Luis Medel
+author_email = luis@luismedel.com
+url = https://github.com/luismedel/bluish
+description = A CI/CD tool
+long_description = file: README.md
+license = MIT
+classifiers =
+    Intended Audience :: Developers
+    Programming Language :: Python :: 3
+    License :: OSI Approved :: MIT License
+    Operating System :: OS Independent
+    Typing :: Typed

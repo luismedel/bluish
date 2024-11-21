@@ -18,15 +18,9 @@ dependencies = [
   "flask==3.0.3",
   "lark==1.2.2",
 ]
-classifiers = [
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Typing :: Typed",
-]
 
 [project.urls]
+"url" = "https://github.com/luismedel/bluish"
 "Homepage" = "https://github.com/luismedel/bluish"
 
 [tool.setuptools.package-data]
