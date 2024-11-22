@@ -72,7 +72,7 @@ class ContextNode:
     NODE_TYPE: str = ""
 
     def __init__(self, parent: Optional["ContextNode"], definition: Definition):
-        self.parent = parent
+        self._parent = parent
         self.attrs = definition
 
         self.result = bluish.process.ProcessResult()
@@ -80,6 +80,10 @@ class ContextNode:
         self.status = bluish.core.ExecutionStatus.PENDING
 
         self._expression_parser: Callable[[str], Any] | None = None
+
+    @property
+    def parent(self) -> "ContextNode":
+        return self._parent  # type: ignore
 
     def __contains__(self, name: str) -> bool:
         return name in self.__dict__ or name in self.attrs

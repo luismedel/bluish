@@ -57,7 +57,37 @@ jobs:
     assert wf.jobs["job2"].result.stdout == ""
 
 
-def test_matrix(temp_file: FileIO) -> None:
+def test_wf_matrix(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+
+    wf = create_workflow(f"""
+matrix:
+    os: [ubuntu, macos]
+    version: ["18.04", "20.04"]
+    color: [red, blue]
+
+jobs:
+    test_job:
+        name: "Job 1"
+        steps:
+            - run: |
+                echo ${{{{ matrix.os }}}}-${{{{ matrix.version }}}}-${{{{ matrix.color }}}} >> {filename}
+""")
+    _ = wf.dispatch()
+    output = temp_file.read().decode()
+
+    assert output == """ubuntu-18.04-red
+ubuntu-18.04-blue
+ubuntu-20.04-red
+ubuntu-20.04-blue
+macos-18.04-red
+macos-18.04-blue
+macos-20.04-red
+macos-20.04-blue
+"""
+
+
+def test_job_matrix(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
     wf = create_workflow(f"""
@@ -67,6 +97,37 @@ jobs:
         matrix:
             os: [ubuntu, macos]
             version: ["18.04", "20.04"]
+            color: [red, blue]
+        steps:
+            - run: |
+                echo ${{{{ matrix.os }}}}-${{{{ matrix.version }}}}-${{{{ matrix.color }}}} >> {filename}
+""")
+    _ = wf.dispatch()
+    output = temp_file.read().decode()
+
+    assert output == """ubuntu-18.04-red
+ubuntu-18.04-blue
+ubuntu-20.04-red
+ubuntu-20.04-blue
+macos-18.04-red
+macos-18.04-blue
+macos-20.04-red
+macos-20.04-blue
+"""
+
+
+def test_compound_matrix(temp_file: FileIO) -> None:
+    filename = str(temp_file.name)
+
+    wf = create_workflow(f"""
+matrix:
+    os: [ubuntu, macos]
+    version: ["18.04", "20.04"]
+
+jobs:
+    test_job:
+        name: "Job 1"
+        matrix:
             color: [red, blue]
         steps:
             - run: |

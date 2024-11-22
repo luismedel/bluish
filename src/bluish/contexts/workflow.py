@@ -17,6 +17,24 @@ class WorkflowContext(bluish.contexts.ContextNode):
     def __init__(self, definition: bluish.contexts.Definition) -> None:
         super().__init__(None, definition)
 
+        self.matrix: dict
+        self.sys_env: dict
+        self.jobs: dict
+        self.runs_on_host: dict[str, Any] | None
+
+        self._job_definitions: dict = {}
+        for k, v in self.attrs.jobs.items():
+            v["id"] = k
+            self._job_definitions[k] = bluish.contexts.JobDefinition(**v)
+
+        self.reset()
+
+    def reset(self) -> None:
+        self.matrix = {}
+        self.sys_env = {}
+        self.jobs = {}
+        self.runs_on_host = None
+
         self.secrets.update(
             {
                 k: v
@@ -30,14 +48,8 @@ class WorkflowContext(bluish.contexts.ContextNode):
             **dotenv_values(self.attrs.env_file or ".env"),
         }
 
-        self.jobs: dict = {}
-        for k, v in self.attrs.jobs.items():
-            v["id"] = k
-            self.jobs[k] = bluish.contexts.job.JobContext(
-                self, bluish.contexts.JobDefinition(**v)
-            )
-
-        self.runs_on_host: dict[str, Any] | None = None
+        for k, v in self._job_definitions.items():
+            self.jobs[k] = bluish.contexts.job.JobContext(self, v)
 
     def dispatch(self) -> bluish.process.ProcessResult:
         self.status = bluish.core.ExecutionStatus.RUNNING
@@ -97,13 +109,18 @@ class WorkflowContext(bluish.contexts.ContextNode):
                     error(f"Dependency {dependency_id} failed")
                     return result
 
-        if job.attrs.matrix:
-            for matrix_tuple in product(*job.attrs.matrix.values()):
+        if job.attrs.matrix or job.parent.attrs.matrix:
+            compound_matrix = {
+                **(job.parent.attrs.matrix if job.parent.attrs.matrix else {}),
+                **(job.attrs.matrix if job.attrs.matrix else {}),
+            }
+
+            for matrix_tuple in product(*compound_matrix.values()):
                 job.reset()
 
                 job.matrix = {
                     key: self.expand_expr(value)
-                    for key, value in zip(job.attrs.matrix.keys(), matrix_tuple)
+                    for key, value in zip(compound_matrix.keys(), matrix_tuple)
                 }
                 result = job.dispatch()
                 job.matrix = {}

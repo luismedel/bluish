@@ -2,20 +2,20 @@ import base64
 from typing import Any
 from uuid import uuid4
 
-import bluish.contexts as contexts
+import bluish.contexts
 import bluish.core
 import bluish.process
 from bluish.logging import debug, error, info, warning
 from bluish.utils import decorate_for_log
 
 
-class JobContext(contexts.InputOutputNode):
+class JobContext(bluish.contexts.InputOutputNode):
     NODE_TYPE = "job"
 
     def __init__(
         self,
-        parent: contexts.ContextNode,
-        definition: contexts.Definition,
+        parent: bluish.contexts.ContextNode,
+        definition: bluish.contexts.Definition,
     ):
         import bluish.contexts.step
 
@@ -24,6 +24,12 @@ class JobContext(contexts.InputOutputNode):
         self.runs_on_host: dict[str, Any] | None
         self.matrix: dict[str, Any]
         self.steps: list[bluish.contexts.step.StepContext]
+
+        self._step_definitions: list[bluish.contexts.StepDefinition] = []
+        for i, step_dict in enumerate(self.attrs.steps):
+            step_dict["id"] = step_dict.get("id", f"step_{i+1}")
+            self._step_definitions.append(bluish.contexts.StepDefinition(**step_dict))
+
         self.reset()
 
     def reset(self) -> None:
@@ -33,9 +39,7 @@ class JobContext(contexts.InputOutputNode):
         self.matrix = {}
         self.steps = []
 
-        for i, step_dict in enumerate(self.attrs.steps):
-            step_dict["id"] = step_dict.get("id", f"step_{i+1}")
-            step_def = contexts.StepDefinition(**step_dict)
+        for step_def in self._step_definitions:
             step = bluish.contexts.step.StepContext(self, step_def)
             self.steps.append(step)
 
@@ -57,7 +61,7 @@ class JobContext(contexts.InputOutputNode):
                 for k, v in self.matrix.items():
                     info(f"  {k}: {v}")
 
-            if not contexts.can_dispatch(self):
+            if not bluish.contexts.can_dispatch(self):
                 self.status = bluish.core.ExecutionStatus.SKIPPED
                 info("Job skipped")
                 return None
@@ -82,15 +86,15 @@ class JobContext(contexts.InputOutputNode):
         return self.result
 
     def read_file(self, file_path: str) -> bytes:
-        return contexts._read_file(self, file_path)
+        return bluish.contexts._read_file(self, file_path)
 
     def write_file(self, file_path: str, content: bytes) -> None:
-        contexts._write_file(self, file_path, content)
+        bluish.contexts._write_file(self, file_path, content)
 
     def exec(
         self,
         command: str,
-        context: contexts.ContextNode,
+        context: bluish.contexts.ContextNode,
         env: dict[str, str] | None = None,
         shell: str | None = None,
         stream_output: bool = False,
