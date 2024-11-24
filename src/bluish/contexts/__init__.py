@@ -1,7 +1,8 @@
 import base64
 import re
-from collections import namedtuple
-from typing import Any, Callable, Optional, TypeVar, cast
+from collections import ChainMap, namedtuple
+from itertools import product
+from typing import Any, Callable, Generator, Optional, Sequence, TypeVar, cast
 
 import bluish.core
 import bluish.process
@@ -16,6 +17,24 @@ from bluish.schemas import (
 from bluish.utils import safe_string
 
 TResult = TypeVar("TResult")
+
+
+def log_dict(
+    _dict: dict | ChainMap,
+    header: str,
+    ctx: "ContextNode | None" = None,
+    sensitive_keys: Sequence[str] = [],
+) -> None:
+    if not _dict:
+        return
+    info(f"{header}:")
+    for k, v in _dict.items():
+        if ctx:
+            v = ctx.expand_expr(v)
+        if k in sensitive_keys:
+            info(f"  {k}: ********")
+        else:
+            info(f"  {k}: {safe_string(v)}")
 
 
 class Definition:
@@ -233,6 +252,18 @@ def _workflow(ctx: ContextNode) -> ContextNode:
     elif ctx.NODE_TYPE == "step":
         return ctx.parent.parent  # type: ignore
     raise ValueError(f"Can't find workflow in context of type: {ctx.NODE_TYPE}")
+
+
+def _generate_matrices(ctx: ContextNode) -> Generator[dict[str, Any], None, None]:
+    if not ctx.attrs.matrix:
+        yield {}
+        return
+
+    for matrix_tuple in product(*ctx.attrs.matrix.values()):
+        yield {
+            key: ctx.expand_expr(value)
+            for key, value in zip(ctx.attrs.matrix.keys(), matrix_tuple)
+        }
 
 
 def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:

@@ -1,5 +1,4 @@
 import os
-from itertools import product
 from typing import Any
 
 from dotenv import dotenv_values
@@ -52,6 +51,8 @@ class WorkflowContext(bluish.contexts.ContextNode):
             self.jobs[k] = bluish.contexts.job.JobContext(self, v)
 
     def dispatch(self) -> bluish.process.ProcessResult:
+        self.reset()
+
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         if self.attrs.runs_on:
@@ -109,24 +110,12 @@ class WorkflowContext(bluish.contexts.ContextNode):
                     error(f"Dependency {dependency_id} failed")
                     return result
 
-        if job.attrs.matrix or job.parent.attrs.matrix:
-            compound_matrix = {
-                **(job.parent.attrs.matrix if job.parent.attrs.matrix else {}),
-                **(job.attrs.matrix if job.attrs.matrix else {}),
-            }
-
-            for matrix_tuple in product(*compound_matrix.values()):
+        for wf_matrix in bluish.contexts._generate_matrices(self):
+            for job_matrix in bluish.contexts._generate_matrices(job):
                 job.reset()
-
-                job.matrix = {
-                    key: self.expand_expr(value)
-                    for key, value in zip(compound_matrix.keys(), matrix_tuple)
-                }
+                job.matrix = {**wf_matrix, **job_matrix}
                 result = job.dispatch()
-                job.matrix = {}
                 if result and result.failed:
                     return result
 
-            return bluish.process.ProcessResult()
-        else:
-            return job.dispatch()
+        return bluish.process.ProcessResult()

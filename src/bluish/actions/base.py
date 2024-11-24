@@ -2,7 +2,7 @@ from typing import Sequence
 
 import bluish.contexts.step
 import bluish.process
-from bluish.contexts import Definition
+from bluish.contexts import Definition, log_dict
 from bluish.logging import debug
 from bluish.schemas import Validator
 
@@ -33,7 +33,13 @@ class Action:
             self.INPUTS_SCHEMA.validate(step.attrs._with)
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
-        step.log_inputs()
+
+        log_dict(
+            step.attrs._with,
+            header="with",
+            ctx=step,
+            sensitive_keys=self.SENSITIVE_INPUTS,
+        )
 
         step.result = self.run(step)
 

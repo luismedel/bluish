@@ -56,10 +56,7 @@ class JobContext(bluish.contexts.InputOutputNode):
             self.runs_on_host = self.parent.runs_on_host  # type: ignore
 
         try:
-            if self.matrix:
-                info("matrix:")
-                for k, v in self.matrix.items():
-                    info(f"  {k}: {v}")
+            bluish.contexts.log_dict(self.matrix, header="matrix", ctx=self)
 
             if not bluish.contexts.can_dispatch(self):
                 self.status = bluish.core.ExecutionStatus.SKIPPED

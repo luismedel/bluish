@@ -8,7 +8,6 @@ import bluish.contexts.step
 import bluish.process
 from bluish.logging import error, info
 from bluish.schemas import Int, List, Object, Optional, Str
-from bluish.utils import safe_string
 
 
 class RunCommand(bluish.actions.base.Action):
@@ -24,10 +23,9 @@ class RunCommand(bluish.actions.base.Action):
     ) -> bluish.process.ProcessResult:
         env = ChainMap(step.env, step.parent.env, step.parent.parent.env)  # type: ignore
 
-        if env:
-            info("env:")
-            for k, v in env.items():
-                info(f"  {k}: {safe_string(v)}")
+        bluish.contexts.log_dict(
+            env, header="env", ctx=step, sensitive_keys=self.SENSITIVE_INPUTS
+        )
 
         if not step.attrs.run:
             return bluish.process.ProcessResult()
