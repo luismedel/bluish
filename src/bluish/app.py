@@ -10,6 +10,7 @@ from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
 from bluish.contexts import WorkflowDefinition
+from bluish.contexts.job import JobContext
 from bluish.contexts.workflow import WorkflowContext
 from bluish.core import (
     init_commands,
@@ -112,7 +113,7 @@ def blu_cli(
         fatal("No workflow file found.")
 
     wf = workflow_from_file(yaml_path)
-    job = wf.jobs.get(job_id)
+    job: JobContext | None = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
 
@@ -174,25 +175,15 @@ def bluish_cli(
 @bluish_cli.command("list")
 @click.pass_obj
 def list_jobs(wf: WorkflowContext) -> None:
-    available_jobs = wf.jobs
-
-    if len(available_jobs) == 0:
+    if not wf.jobs:
         fatal("No jobs found in workflow file.")
 
-    ids = []
-    names = []
+    items = tuple((id, job.attrs.name or "") for id, job in wf.jobs.items())
+    id_len = max(len(id) for id, _ in items)
 
-    for id, job in available_jobs.items():
-        ids.append(id)
-        names.append(job.attrs.name or "")
-
-    len_id = max([len(id) for id in ids])
-
-    click.secho(f"{'ID':<{len_id}}  NAME", fg="yellow", bold=True)
-    for i in range(len(ids)):
-        id = click.style(ids[i], fg="cyan")
-        name = click.style(names[i], fg="white")
-        click.echo(f"{id:<{len_id}}  {name}")
+    click.secho(f"{'ID':<{id_len}}  NAME", fg="yellow", bold=True)
+    for id, name in items:
+        click.echo(f"{id:<{id_len}}  {name}")
 
 
 @bluish_cli.command("run")
@@ -213,6 +204,12 @@ def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
         else:
             click.secho("Job completed successfully.", fg="green")
     except Exception as e:
+        if os.environ.get("BLUISH_DEBUG"):
+            import traceback
+
+            trace = traceback.format_exc()
+            print(trace)
+
         fatal(str(e))
 
 
