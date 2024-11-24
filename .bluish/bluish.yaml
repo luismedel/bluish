@@ -6,7 +6,7 @@ var:
 jobs:
   publish:
 
-    name: Publishes the latest release of Bluish 
+    name: Publish the latest release of Bluish 
 
     runs_on: docker://python:${{ python_version }}-alpine
 
@@ -18,7 +18,7 @@ jobs:
             - jq
             - curl
 
-      - name: Obtain the remote package package version
+      - name: Obtain the remote package version
         run: |
           pypi_version=$(curl -s https://pypi.org/pypi/bluish/json | jq -r .info.version)
           echo "pypi_version=$pypi_version" >> "$BLUISH_OUTPUT"
@@ -77,11 +77,12 @@ jobs:
           python -m twine upload dist/*
 
   create-docker:
+    name: Create the Bluish docker images
     matrix:
       flavor: ["alpine", "ubuntu"]
 
     steps:
-      - name: "Build Alpine Dockerfile"
+      - name: Build Alpine Dockerfile
         uses: core/expand-template
         if: ${{ matrix.flavor == "alpine" }}
         with:
@@ -97,7 +98,7 @@ jobs:
                   pip3 install bluish==${{ project_version }} --break-system-packages
           output_file: ./Dockerfile-${{ matrix.flavor }}
 
-      - name: "Build Ubuntu Dockerfile"
+      - name: Build Ubuntu Dockerfile
         uses: core/expand-template
         if: ${{ matrix.flavor == "ubuntu" }}
         with:
