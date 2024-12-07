@@ -63,10 +63,15 @@ def locate_yaml(name: str) -> str | None:
 
     if not name:
         name = "bluish"
-    if os.path.exists(f"{name}.yaml"):
-        return f"{name}.yaml"
-    elif os.path.exists(f".bluish/{name}.yaml"):
-        return f".bluish/{name}.yaml"
+
+    paths = (name, f".bluish/{name}")
+    exts = (".yaml", ".yml")
+
+    for path in paths:
+        for ext in exts:
+            if os.path.exists(f"{path}{ext}"):
+                return f"{path}{ext}"
+
     return None
 
 
