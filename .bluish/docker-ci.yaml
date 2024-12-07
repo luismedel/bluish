@@ -10,12 +10,12 @@ jobs:
         with:
           repository: https://github.com/luismedel/bluish
 
-      - name: Prepares the environment
+      - name: Prepare the environment
         run: |
           pip3 install -r requirements-linting.txt
           pip3 install -r requirements-testing.txt
 
-      - name: Runs ruff and mypy
+      - name: Run ruff and mypy
         run: |
           ruff version
           ruff check src/ test/

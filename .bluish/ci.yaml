@@ -10,7 +10,7 @@ jobs:
           pip3 install -r requirements-linting.txt
 
   lint:
-    name: Runs ruff and mypy
+    name: Run ruff and mypy
     depends_on: [_prepare_lint]
     steps:
       - run: |
@@ -21,7 +21,7 @@ jobs:
           mypy --ignore-missing-imports --python-version=${{ python_version }} src/ test/
 
   fix:
-    name: Reformats the code using ruff
+    name: Reformat the code using ruff
     steps:
       - run: |
           ruff version
@@ -36,14 +36,14 @@ jobs:
           pip3 install -r requirements-testing.txt
 
   test:
-    name: Runs pytest
+    name: Run basic test suite
     depends_on: [_prepare_tests]
     steps:
       - run: |
           pytest -n 2
 
   test-all:
-    name: Runs pytest
+    name: Run full test suite
     depends_on: [_prepare_tests]
     steps:
       - run: |
