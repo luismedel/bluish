@@ -61,9 +61,7 @@ class Login(bluish.actions.base.Action):
 
     SENSITIVE_INPUTS: tuple[str, ...] = ("password",)
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         username = inputs["username"]
@@ -89,9 +87,7 @@ class Login(bluish.actions.base.Action):
 class Logout(bluish.actions.base.Action):
     FQN: str = "docker/logout"
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         command = "docker logout"
         if step.get_inherited_attr("echo_commands", True):
             info("Logging out of Docker...")
@@ -110,9 +106,7 @@ class Build(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         dockerfile = inputs.get("dockerfile", "Dockerfile")
@@ -141,9 +135,7 @@ class GetPid(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         name = step.inputs["name"]
 
         ps_result = docker_ps(step, name=name)
@@ -184,9 +176,7 @@ class Run(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         image = inputs["image"]
@@ -253,9 +243,7 @@ class Stop(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         name = inputs.get("name")
@@ -333,9 +321,7 @@ class Exec(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         name = inputs.get("name")
@@ -416,9 +402,7 @@ class CreateNetwork(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         name = inputs["name"]

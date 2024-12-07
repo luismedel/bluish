@@ -1,6 +1,6 @@
 import bluish.actions
-import bluish.nodes as nodes
 import bluish.core
+import bluish.nodes as nodes
 import bluish.process
 from bluish.logging import info
 

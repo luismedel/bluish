@@ -18,9 +18,7 @@ class RunCommand(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         env = ChainMap(step.env, step.parent.env, step.parent.parent.env)  # type: ignore
 
         bluish.nodes.log_dict(
@@ -57,9 +55,7 @@ class ExpandTemplate(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         job = cast(bluish.nodes.job.Job, step.parent)
@@ -99,9 +95,7 @@ class UploadFile(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         contents: str
@@ -149,9 +143,7 @@ class DownloadFile(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         source_file = inputs["source_file"]

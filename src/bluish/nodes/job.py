@@ -2,8 +2,8 @@ import base64
 from typing import Any
 from uuid import uuid4
 
-import bluish.nodes
 import bluish.core
+import bluish.nodes
 import bluish.process
 from bluish.logging import debug, error, info, warning
 from bluish.utils import decorate_for_log

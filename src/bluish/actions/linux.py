@@ -18,9 +18,7 @@ class InstallPackages(bluish.actions.base.Action):
         }
     )
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         package_str = " ".join(step.inputs["packages"])
         flavor = step.inputs.get("flavor", "auto")
 

@@ -9,12 +9,12 @@ import yaml
 from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
-from bluish.nodes import WorkflowDefinition
-from bluish.nodes.job import Job
-from bluish.nodes.workflow import Workflow
 from bluish.core import (
     init_commands,
 )
+from bluish.nodes import WorkflowDefinition
+from bluish.nodes.job import Job
+from bluish.nodes.workflow import Workflow
 
 
 class LogFormatter(logging.Formatter):

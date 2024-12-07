@@ -23,9 +23,7 @@ def run_git_command(
     return job.exec(f"{preamble} {command}", step)
 
 
-def prepare_environment(
-    step: bluish.nodes.step.Step
-) -> bluish.process.ProcessResult:
+def prepare_environment(step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
     REQUIRED = {
         "git": "git",
         "openssh-client": "ssh",
@@ -69,9 +67,7 @@ class Checkout(bluish.actions.base.Action):
     def fqn(self) -> str:
         return "git/checkout"
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         try:
             inputs = step.inputs
 

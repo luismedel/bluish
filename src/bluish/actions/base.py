@@ -2,8 +2,8 @@ from typing import Sequence
 
 import bluish.nodes.step
 import bluish.process
-from bluish.nodes import Definition, log_dict
 from bluish.logging import debug
+from bluish.nodes import Definition, log_dict
 from bluish.schemas import Validator
 
 
@@ -19,23 +19,19 @@ class Action:
     INPUTS_SCHEMA: Validator | None = None
     SENSITIVE_INPUTS: Sequence[str] = tuple()
 
-    def run(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         raise NotImplementedError()
 
-    def execute(
-        self, step: bluish.nodes.step.Step
-    ) -> bluish.process.ProcessResult:
+    def execute(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
         if self.SCHEMA:
             self.SCHEMA.validate(step.attrs.as_dict())
-        if self.INPUTS_SCHEMA and step.attrs._with:
-            self.INPUTS_SCHEMA.validate(step.attrs._with)
+        if self.INPUTS_SCHEMA and step.inputs:
+            self.INPUTS_SCHEMA.validate(step.inputs)
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
 
         log_dict(
-            step.attrs._with,
+            step.inputs,
             header="with",
             ctx=step,
             sensitive_keys=self.SENSITIVE_INPUTS,

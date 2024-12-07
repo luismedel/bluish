@@ -3,9 +3,9 @@ from typing import Any
 
 from dotenv import dotenv_values
 
+import bluish.core
 import bluish.nodes
 import bluish.nodes.job
-import bluish.core
 import bluish.process
 from bluish.logging import debug, error, info
 
