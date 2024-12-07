@@ -13,8 +13,10 @@ Bluish automates software development and deployment tasks, similar to GitHub Ac
 
 ## Installation
 
+Use `pipx` (or `pip`!):
+
 ```bash
-pip install bluish
+pipx install bluish
 ```
 
 ## Usage
