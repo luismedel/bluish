@@ -1,6 +1,6 @@
-name: Deploy 
+name: CI 
 
-on: [push, workflow_dispatch]
+on: [push]
 
 jobs:
   test:
