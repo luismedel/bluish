@@ -195,19 +195,7 @@ class Node:
 class InputOutputNode(Node):
     def __init__(self, parent: Node, definition: Definition):
         super().__init__(parent, definition)
-
         self.sensitive_inputs: set[str] = {"password", "token"}
-
-    def log_inputs(self) -> None:
-        if not self.attrs._with:
-            return
-        info("with:")
-        for k, v in self.attrs._with.items():
-            v = self.expand_expr(v)
-            if k in self.sensitive_inputs:
-                info(f"  {k}: ********")
-            else:
-                info(f"  {k}: {safe_string(v)}")
 
 
 class CircularDependencyError(Exception):
