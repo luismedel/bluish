@@ -3,7 +3,7 @@ from typing import Any, Callable
 
 import lark
 
-import bluish.contexts
+import bluish.nodes
 from bluish.safe_string import SafeString
 
 SENSITIVE_LITERALS = ("password", "secret", "token")
@@ -99,7 +99,7 @@ def concat(a: Any, b: Any) -> Any:
 
 @lark.v_args(inline=True)
 class ExprTransformer(lark.visitors.Transformer_InPlaceRecursive):
-    def __init__(self, ctx: bluish.contexts.ContextNode):
+    def __init__(self, ctx: bluish.nodes.Node):
         self.expr_depth: int = 0
         self.context = ctx
 
@@ -177,7 +177,7 @@ class ExprTransformer(lark.visitors.Transformer_InPlaceRecursive):
         return true_expr if to_bool(condition) else false_expr
 
 
-def create_parser(ctx: bluish.contexts.ContextNode) -> Callable[[str], Any]:
+def create_parser(ctx: bluish.nodes.Node) -> Callable[[str], Any]:
     """Create a parser with the given context.
 
     >>> ctx = context.WorkflowContext({"secrets": {"password": "1234"}})

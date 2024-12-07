@@ -3,8 +3,8 @@ from collections import ChainMap
 from typing import cast
 
 import bluish.actions.base
-import bluish.contexts.job
-import bluish.contexts.step
+import bluish.nodes.job
+import bluish.nodes.step
 import bluish.process
 from bluish.logging import error, info
 from bluish.schemas import Int, List, Object, Optional, Str
@@ -19,11 +19,11 @@ class RunCommand(bluish.actions.base.Action):
     )
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         env = ChainMap(step.env, step.parent.env, step.parent.parent.env)  # type: ignore
 
-        bluish.contexts.log_dict(
+        bluish.nodes.log_dict(
             env, header="env", ctx=step, sensitive_keys=self.SENSITIVE_INPUTS
         )
 
@@ -58,11 +58,11 @@ class ExpandTemplate(bluish.actions.base.Action):
     )
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
-        job = cast(bluish.contexts.job.JobContext, step.parent)
+        job = cast(bluish.nodes.job.Job, step.parent)
 
         template_content: str
         if "input_file" in inputs:
@@ -100,7 +100,7 @@ class UploadFile(bluish.actions.base.Action):
     )
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
@@ -117,7 +117,7 @@ class UploadFile(bluish.actions.base.Action):
         destination_file = inputs.get("destination_file")
         assert destination_file is not None
 
-        job = cast(bluish.contexts.job.JobContext, step.parent)
+        job = cast(bluish.nodes.job.Job, step.parent)
 
         info(f"Writing file to: {destination_file}...")
         try:
@@ -150,14 +150,14 @@ class DownloadFile(bluish.actions.base.Action):
     )
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         inputs = step.inputs
 
         source_file = inputs["source_file"]
         info(f"Reading file: {source_file}...")
         try:
-            job = cast(bluish.contexts.job.JobContext, step.parent)
+            job = cast(bluish.nodes.job.Job, step.parent)
             raw_contents = job.read_file(source_file)
         except IOError as e:
             error(f"Failed to read file: {str(e)}")

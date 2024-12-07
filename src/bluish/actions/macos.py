@@ -1,8 +1,8 @@
 from typing import cast
 
 import bluish.actions.base
-import bluish.contexts.job
-import bluish.contexts.step
+import bluish.nodes.job
+import bluish.nodes.step
 from bluish.logging import error, info
 from bluish.process import ProcessResult, install_package
 from bluish.schemas import DefaultStringList, Object, Optional, Str
@@ -18,13 +18,13 @@ class InstallPackages(bluish.actions.base.Action):
         }
     )
 
-    def run(self, step: bluish.contexts.step.StepContext) -> ProcessResult:
+    def run(self, step: bluish.nodes.step.Step) -> ProcessResult:
         package_str = " ".join(step.inputs["packages"])
         flavor = step.inputs.get("flavor", "auto")
 
         info(f"Installing packages {package_str}...")
 
-        job = cast(bluish.contexts.job.JobContext, step.parent)
+        job = cast(bluish.nodes.job.Job, step.parent)
 
         result = install_package(
             job.runs_on_host, step.inputs["packages"], flavor=flavor

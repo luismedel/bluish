@@ -1,8 +1,8 @@
 from typing import Sequence
 
-import bluish.contexts.step
+import bluish.nodes.step
 import bluish.process
-from bluish.contexts import Definition, log_dict
+from bluish.nodes import Definition, log_dict
 from bluish.logging import debug
 from bluish.schemas import Validator
 
@@ -20,12 +20,12 @@ class Action:
     SENSITIVE_INPUTS: Sequence[str] = tuple()
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         raise NotImplementedError()
 
     def execute(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         if self.SCHEMA:
             self.SCHEMA.validate(step.attrs.as_dict())

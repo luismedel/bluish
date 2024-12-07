@@ -1,14 +1,14 @@
 import bluish.actions
-import bluish.contexts as contexts
+import bluish.nodes as nodes
 import bluish.core
 import bluish.process
 from bluish.logging import info
 
 
-class StepContext(contexts.InputOutputNode):
+class Step(nodes.InputOutputNode):
     NODE_TYPE = "step"
 
-    def __init__(self, parent: contexts.ContextNode, definition: contexts.Definition):
+    def __init__(self, parent: nodes.Node, definition: nodes.Definition):
         super().__init__(parent, definition)
 
         self.action_class = bluish.actions.get_action(self.attrs.uses)
@@ -29,7 +29,7 @@ class StepContext(contexts.InputOutputNode):
     def dispatch(self) -> bluish.process.ProcessResult | None:
         info(f"* Run step '{self.display_name}'")
 
-        if not contexts.can_dispatch(self):
+        if not nodes.can_dispatch(self):
             self.status = bluish.core.ExecutionStatus.SKIPPED
             info(" >>> Skipped")
             return None

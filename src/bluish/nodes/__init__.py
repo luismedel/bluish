@@ -22,7 +22,7 @@ TResult = TypeVar("TResult")
 def log_dict(
     _dict: dict | ChainMap,
     header: str,
-    ctx: "ContextNode | None" = None,
+    ctx: "Node | None" = None,
     sensitive_keys: Sequence[str] = [],
 ) -> None:
     if not _dict:
@@ -87,10 +87,10 @@ class StepDefinition(Definition):
     pass
 
 
-class ContextNode:
+class Node:
     NODE_TYPE: str = ""
 
-    def __init__(self, parent: Optional["ContextNode"], definition: Definition):
+    def __init__(self, parent: Optional["Node"], definition: Definition):
         self._parent = parent
         self.attrs = definition
 
@@ -101,7 +101,7 @@ class ContextNode:
         self._expression_parser: Callable[[str], Any] | None = None
 
     @property
-    def parent(self) -> "ContextNode":
+    def parent(self) -> "Node":
         return self._parent  # type: ignore
 
     def __contains__(self, name: str) -> bool:
@@ -179,7 +179,7 @@ class ContextNode:
         self, name: str, default: TResult | None = None
     ) -> TResult | None:
         result = default
-        ctx: ContextNode | None = self
+        ctx: Node | None = self
         while ctx is not None:
             if name in ctx:
                 result = cast(TResult, getattr(ctx, name))
@@ -192,8 +192,8 @@ class ContextNode:
         return self.expand_expr(result)
 
 
-class InputOutputNode(ContextNode):
-    def __init__(self, parent: ContextNode, definition: Definition):
+class InputOutputNode(Node):
+    def __init__(self, parent: Node, definition: Definition):
         super().__init__(parent, definition)
 
         self.sensitive_inputs: set[str] = {"password", "token"}
@@ -224,19 +224,19 @@ EXPR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
 ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
 
 
-def _step_or_job(ctx: ContextNode) -> InputOutputNode:
+def _step_or_job(ctx: Node) -> InputOutputNode:
     if isinstance(ctx, InputOutputNode):
         return ctx
     raise ValueError(f"Can't find step or job in context of type: {ctx.NODE_TYPE}")
 
 
-def _step(ctx: ContextNode) -> ContextNode:
+def _step(ctx: Node) -> Node:
     if ctx.NODE_TYPE == "step":
         return ctx
     raise ValueError(f"Can't find step in context of type: {ctx.NODE_TYPE}")
 
 
-def _job(ctx: ContextNode) -> ContextNode:
+def _job(ctx: Node) -> Node:
     if ctx.NODE_TYPE == "job":
         return ctx
     elif ctx.NODE_TYPE == "step":
@@ -244,7 +244,7 @@ def _job(ctx: ContextNode) -> ContextNode:
     raise ValueError(f"Can't find job in context of type: {ctx.NODE_TYPE}")
 
 
-def _workflow(ctx: ContextNode) -> ContextNode:
+def _workflow(ctx: Node) -> Node:
     if ctx.NODE_TYPE == "workflow":
         return ctx
     elif ctx.NODE_TYPE == "job":
@@ -254,7 +254,7 @@ def _workflow(ctx: ContextNode) -> ContextNode:
     raise ValueError(f"Can't find workflow in context of type: {ctx.NODE_TYPE}")
 
 
-def _generate_matrices(ctx: ContextNode) -> Generator[dict[str, Any], None, None]:
+def _generate_matrices(ctx: Node) -> Generator[dict[str, Any], None, None]:
     if not ctx.attrs.matrix:
         yield {}
         return
@@ -266,10 +266,10 @@ def _generate_matrices(ctx: ContextNode) -> Generator[dict[str, Any], None, None
         }
 
 
-def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
-    import bluish.contexts.job
-    import bluish.contexts.step
-    import bluish.contexts.workflow
+def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
+    import bluish.nodes.job
+    import bluish.nodes.step
+    import bluish.nodes.workflow
 
     def prepare_value(value: Any) -> Any:
         if value is None:
@@ -307,7 +307,7 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
         elif varname == "returncode":
             return prepare_value(0 if ctx.result is None else ctx.result.returncode)
     elif root == "env":
-        current: ContextNode | None = ctx
+        current: Node | None = ctx
         while current:
             for k in ("sys_env", "env"):
                 dict_ = getattr(current, k, None)
@@ -323,11 +323,11 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
     elif root == "workflow":
         return _try_get_value(_workflow(ctx), varname, raw)
     elif root == "secrets":
-        wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
+        wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
         if varname in wf.secrets:
             return prepare_value(SafeString(cast(str, wf.secrets[varname]), "********"))
     elif root == "jobs":
-        wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
+        wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
         job_id, varname = varname.split(".", maxsplit=1)
         job = wf.jobs.get(job_id)
         if not job:
@@ -336,14 +336,14 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
     elif root == "job":
         return _try_get_value(_job(ctx), varname, raw)
     elif root == "steps":
-        job = cast(bluish.contexts.job.JobContext, _job(ctx))
+        job = cast(bluish.nodes.job.Job, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
         step = next((step for step in job.steps if step.id == step_id), None)
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_get_value(step, varname, raw)
     elif root == "matrix":
-        job = cast(bluish.contexts.job.JobContext, _job(ctx))
+        job = cast(bluish.nodes.job.Job, _job(ctx))
         if varname in job.matrix:
             return prepare_value(job.matrix[varname])
     elif root == "step":
@@ -363,10 +363,10 @@ def _try_get_value(ctx: ContextNode, name: str, raw: bool = False) -> Any:
     return None
 
 
-def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
-    import bluish.contexts.job
-    import bluish.contexts.step
-    import bluish.contexts.workflow
+def _try_set_value(ctx: "Node", name: str, value: str) -> bool:
+    import bluish.nodes.job
+    import bluish.nodes.step
+    import bluish.nodes.workflow
 
     if "." not in name:
         return False
@@ -385,7 +385,7 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     elif root == "workflow":
         return _try_set_value(_workflow(ctx), varname, value)
     elif root == "jobs":
-        wf = cast(bluish.contexts.workflow.WorkflowContext, _workflow(ctx))
+        wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
         job_id, varname = varname.split(".", maxsplit=1)
         job = wf.jobs.get(job_id)
         if not job:
@@ -394,7 +394,7 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     elif root == "job":
         return _try_set_value(_job(ctx), varname, value)
     elif root == "steps":
-        job = cast(bluish.contexts.job.JobContext, _job(ctx))
+        job = cast(bluish.nodes.job.Job, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
         step = next((step for step in job.steps if step.id == step_id), None)
         if not step:
@@ -403,7 +403,7 @@ def _try_set_value(ctx: "ContextNode", name: str, value: str) -> bool:
     elif root == "step":
         return _try_set_value(_step(ctx), varname, value)
     elif root == "inputs":
-        step = cast(bluish.contexts.step.StepContext, _step(ctx))
+        step = cast(bluish.nodes.step.Step, _step(ctx))
         step.inputs[varname] = value
         return True
     elif root == "outputs":
@@ -418,7 +418,7 @@ TExpandValue = str | dict[str, Any] | list[str]
 
 
 def _expand_expr(
-    ctx: ContextNode, value: TExpandValue | None, _depth: int = 1
+    ctx: Node, value: TExpandValue | None, _depth: int = 1
 ) -> TExpandValue:
     if not isinstance(value, str):
         if isinstance(value, dict):
@@ -452,12 +452,12 @@ def can_dispatch(context: InputOutputNode) -> bool:
     return bool(context.expand_expr(condition))
 
 
-def _read_file(ctx: ContextNode, file_path: str) -> bytes:
+def _read_file(ctx: Node, file_path: str) -> bytes:
     """Reads a file from a host and returns its content as bytes."""
 
-    import bluish.contexts.job
+    import bluish.nodes.job
 
-    job = cast(bluish.contexts.job.JobContext, _job(ctx))
+    job = cast(bluish.nodes.job.Job, _job(ctx))
     result = job.exec(f"base64 -i '{file_path}'", ctx)
     if result.failed:
         raise IOError(f"Failure reading from {file_path}: {result.error}")
@@ -465,12 +465,12 @@ def _read_file(ctx: ContextNode, file_path: str) -> bytes:
     return base64.b64decode(result.stdout)
 
 
-def _write_file(ctx: ContextNode, file_path: str, content: bytes) -> None:
+def _write_file(ctx: Node, file_path: str, content: bytes) -> None:
     """Writes content to a file on a host."""
 
-    import bluish.contexts.job
+    import bluish.nodes.job
 
-    job = cast(bluish.contexts.job.JobContext, _job(ctx))
+    job = cast(bluish.nodes.job.Job, _job(ctx))
     b64 = base64.b64encode(content).decode()
 
     result = job.exec(f"echo {b64} | base64 -di - > {file_path}", ctx)

@@ -2,8 +2,8 @@ import os
 from typing import cast
 
 import bluish.actions.base
-import bluish.contexts.job
-import bluish.contexts.step
+import bluish.nodes.job
+import bluish.nodes.step
 import bluish.process
 from bluish.logging import error, info
 from bluish.schemas import Int, Object, Optional, Str
@@ -11,7 +11,7 @@ from bluish.utils import safe_string
 
 
 def run_git_command(
-    command: str, step: bluish.contexts.step.StepContext
+    command: str, step: bluish.nodes.step.Step
 ) -> bluish.process.ProcessResult:
     preamble: str = ""
 
@@ -19,19 +19,19 @@ def run_git_command(
     if key_file:
         preamble = f"export GIT_SSH_COMMAND='ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeychecking=no';"
 
-    job = cast(bluish.contexts.job.JobContext, step.parent)
+    job = cast(bluish.nodes.job.Job, step.parent)
     return job.exec(f"{preamble} {command}", step)
 
 
 def prepare_environment(
-    step: bluish.contexts.step.StepContext
+    step: bluish.nodes.step.Step
 ) -> bluish.process.ProcessResult:
     REQUIRED = {
         "git": "git",
         "openssh-client": "ssh",
     }
 
-    job = cast(bluish.contexts.job.JobContext, step.parent)
+    job = cast(bluish.nodes.job.Job, step.parent)
 
     required_packages = [
         package
@@ -48,7 +48,7 @@ def prepare_environment(
     return bluish.process.ProcessResult()
 
 
-def cleanup_environment(step: bluish.contexts.step.StepContext) -> None:
+def cleanup_environment(step: bluish.nodes.step.Step) -> None:
     pass
 
 
@@ -70,7 +70,7 @@ class Checkout(bluish.actions.base.Action):
         return "git/checkout"
 
     def run(
-        self, step: bluish.contexts.step.StepContext
+        self, step: bluish.nodes.step.Step
     ) -> bluish.process.ProcessResult:
         try:
             inputs = step.inputs

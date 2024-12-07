@@ -2,45 +2,45 @@ import base64
 from typing import Any
 from uuid import uuid4
 
-import bluish.contexts
+import bluish.nodes
 import bluish.core
 import bluish.process
 from bluish.logging import debug, error, info, warning
 from bluish.utils import decorate_for_log
 
 
-class JobContext(bluish.contexts.InputOutputNode):
+class Job(bluish.nodes.InputOutputNode):
     NODE_TYPE = "job"
 
     def __init__(
         self,
-        parent: bluish.contexts.ContextNode,
-        definition: bluish.contexts.Definition,
+        parent: bluish.nodes.Node,
+        definition: bluish.nodes.Definition,
     ):
-        import bluish.contexts.step
+        import bluish.nodes.step
 
         super().__init__(parent, definition)
 
         self.runs_on_host: dict[str, Any] | None
         self.matrix: dict[str, Any]
-        self.steps: list[bluish.contexts.step.StepContext]
+        self.steps: list[bluish.nodes.step.Step]
 
-        self._step_definitions: list[bluish.contexts.StepDefinition] = []
+        self._step_definitions: list[bluish.nodes.StepDefinition] = []
         for i, step_dict in enumerate(self.attrs.steps):
             step_dict["id"] = step_dict.get("id", f"step_{i+1}")
-            self._step_definitions.append(bluish.contexts.StepDefinition(**step_dict))
+            self._step_definitions.append(bluish.nodes.StepDefinition(**step_dict))
 
         self.reset()
 
     def reset(self) -> None:
-        import bluish.contexts.step
+        import bluish.nodes.step
 
         self.runs_on_host = None
         self.matrix = {}
         self.steps = []
 
         for step_def in self._step_definitions:
-            step = bluish.contexts.step.StepContext(self, step_def)
+            step = bluish.nodes.step.Step(self, step_def)
             self.steps.append(step)
 
     def dispatch(self) -> bluish.process.ProcessResult | None:
@@ -56,9 +56,9 @@ class JobContext(bluish.contexts.InputOutputNode):
             self.runs_on_host = self.parent.runs_on_host  # type: ignore
 
         try:
-            bluish.contexts.log_dict(self.matrix, header="matrix", ctx=self)
+            bluish.nodes.log_dict(self.matrix, header="matrix", ctx=self)
 
-            if not bluish.contexts.can_dispatch(self):
+            if not bluish.nodes.can_dispatch(self):
                 self.status = bluish.core.ExecutionStatus.SKIPPED
                 info("Job skipped")
                 return None
@@ -83,15 +83,15 @@ class JobContext(bluish.contexts.InputOutputNode):
         return self.result
 
     def read_file(self, file_path: str) -> bytes:
-        return bluish.contexts._read_file(self, file_path)
+        return bluish.nodes._read_file(self, file_path)
 
     def write_file(self, file_path: str, content: bytes) -> None:
-        bluish.contexts._write_file(self, file_path, content)
+        bluish.nodes._write_file(self, file_path, content)
 
     def exec(
         self,
         command: str,
-        context: bluish.contexts.ContextNode,
+        context: bluish.nodes.Node,
         env: dict[str, str] | None = None,
         shell: str | None = None,
         stream_output: bool = False,

@@ -9,9 +9,9 @@ import yaml
 from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
-from bluish.contexts import WorkflowDefinition
-from bluish.contexts.job import JobContext
-from bluish.contexts.workflow import WorkflowContext
+from bluish.nodes import WorkflowDefinition
+from bluish.nodes.job import Job
+from bluish.nodes.workflow import Workflow
 from bluish.core import (
     init_commands,
 )
@@ -75,7 +75,7 @@ def locate_yaml(name: str) -> str | None:
     return None
 
 
-def workflow_from_file(file: str) -> WorkflowContext:
+def workflow_from_file(file: str) -> Workflow:
     """Loads the workflow from a file."""
 
     yaml_contents: str = ""
@@ -88,7 +88,7 @@ def workflow_from_file(file: str) -> WorkflowContext:
         fatal("No workflow file found.")
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    return WorkflowContext(definition)
+    return Workflow(definition)
 
 
 @click.command("blu")
@@ -118,7 +118,7 @@ def blu_cli(
         fatal("No workflow file found.")
 
     wf = workflow_from_file(yaml_path)
-    job: JobContext | None = wf.jobs.get(job_id)
+    job: Job | None = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
 
@@ -173,13 +173,13 @@ def bluish_cli(
         fatal("No workflow file found.")
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    wf = WorkflowContext(definition)
+    wf = Workflow(definition)
     ctx.obj = wf
 
 
 @bluish_cli.command("list")
 @click.pass_obj
-def list_jobs(wf: WorkflowContext) -> None:
+def list_jobs(wf: Workflow) -> None:
     if not wf.jobs:
         fatal("No jobs found in workflow file.")
 
@@ -195,7 +195,7 @@ def list_jobs(wf: WorkflowContext) -> None:
 @click.argument("job_id", type=str, required=True)
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.pass_obj
-def run_job(wf: WorkflowContext, job_id: str, no_deps: bool) -> None:
+def run_job(wf: Workflow, job_id: str, no_deps: bool) -> None:
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")

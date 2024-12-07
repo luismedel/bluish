@@ -1,9 +1,9 @@
 
-import bluish.contexts.workflow
+import bluish.nodes.workflow
 import yaml
-from bluish.contexts import WorkflowDefinition
+from bluish.nodes import WorkflowDefinition
 
 
-def create_workflow(yaml_definition: str) -> bluish.contexts.workflow.WorkflowContext:
+def create_workflow(yaml_definition: str) -> bluish.nodes.workflow.Workflow:
     definition = WorkflowDefinition(**yaml.safe_load(yaml_definition))
-    return bluish.contexts.workflow.WorkflowContext(definition)
+    return bluish.nodes.workflow.Workflow(definition)

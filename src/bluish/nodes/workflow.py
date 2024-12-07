@@ -3,17 +3,17 @@ from typing import Any
 
 from dotenv import dotenv_values
 
-import bluish.contexts
-import bluish.contexts.job
+import bluish.nodes
+import bluish.nodes.job
 import bluish.core
 import bluish.process
 from bluish.logging import debug, error, info
 
 
-class WorkflowContext(bluish.contexts.ContextNode):
+class Workflow(bluish.nodes.Node):
     NODE_TYPE = "workflow"
 
-    def __init__(self, definition: bluish.contexts.Definition) -> None:
+    def __init__(self, definition: bluish.nodes.Definition) -> None:
         super().__init__(None, definition)
 
         self.matrix: dict
@@ -24,7 +24,7 @@ class WorkflowContext(bluish.contexts.ContextNode):
         self._job_definitions: dict = {}
         for k, v in self.attrs.jobs.items():
             v["id"] = k
-            self._job_definitions[k] = bluish.contexts.JobDefinition(**v)
+            self._job_definitions[k] = bluish.nodes.JobDefinition(**v)
 
         self.reset()
 
@@ -48,7 +48,7 @@ class WorkflowContext(bluish.contexts.ContextNode):
         }
 
         for k, v in self._job_definitions.items():
-            self.jobs[k] = bluish.contexts.job.JobContext(self, v)
+            self.jobs[k] = bluish.nodes.job.Job(self, v)
 
     def dispatch(self) -> bluish.process.ProcessResult:
         self.reset()
@@ -80,15 +80,15 @@ class WorkflowContext(bluish.contexts.ContextNode):
             self.runs_on_host = None
 
     def dispatch_job(
-        self, job: bluish.contexts.job.JobContext, no_deps: bool
+        self, job: bluish.nodes.job.Job, no_deps: bool
     ) -> bluish.process.ProcessResult | None:
         return self.__dispatch_job(job, no_deps, set())
 
     def __dispatch_job(
-        self, job: bluish.contexts.job.JobContext, no_deps: bool, visited_jobs: set[str]
+        self, job: bluish.nodes.job.Job, no_deps: bool, visited_jobs: set[str]
     ) -> bluish.process.ProcessResult | None:
         if job.id in visited_jobs:
-            raise bluish.contexts.CircularDependencyError("Circular reference detected")
+            raise bluish.nodes.CircularDependencyError("Circular reference detected")
 
         if job.status == bluish.core.ExecutionStatus.FINISHED:
             info(f"Job {job.id} already dispatched and finished")
@@ -110,8 +110,8 @@ class WorkflowContext(bluish.contexts.ContextNode):
                     error(f"Dependency {dependency_id} failed")
                     return result
 
-        for wf_matrix in bluish.contexts._generate_matrices(self):
-            for job_matrix in bluish.contexts._generate_matrices(job):
+        for wf_matrix in bluish.nodes._generate_matrices(self):
+            for job_matrix in bluish.nodes._generate_matrices(job):
                 job.reset()
                 job.matrix = {**wf_matrix, **job_matrix}
                 result = job.dispatch()

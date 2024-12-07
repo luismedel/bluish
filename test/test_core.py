@@ -4,7 +4,7 @@ from io import FileIO
 from test.utils import create_workflow
 
 import pytest
-from bluish.contexts import CircularDependencyError
+from bluish.nodes import CircularDependencyError
 from bluish.core import (
     ExecutionStatus,
     init_commands,
