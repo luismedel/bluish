@@ -101,10 +101,12 @@ def workflow_from_file(file: str) -> Workflow:
     help="Log level",
 )
 @click.version_option(PROJECT_VERSION)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def blu_cli(
     job_id: str,
     no_deps: bool,
     log_level: str,
+    args: tuple[str],
 ) -> None:
     init_logging(log_level)
     init_commands()
@@ -117,7 +119,12 @@ def blu_cli(
     if not yaml_path:
         fatal("No workflow file found.")
 
+    logging.info(f"Loading workflow from {yaml_path}")
+    logging.info("")
+
     wf = workflow_from_file(yaml_path)
+    wf.set_inputs({k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)})
+
     job: Job | None = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
@@ -165,6 +172,9 @@ def bluish_cli(
     if not yaml_path:
         fatal("No workflow file found.")
 
+    logging.info(f"Loading workflow from {yaml_path}")
+    logging.info("")
+
     with contextlib.suppress(FileNotFoundError):
         with open(yaml_path, "r") as yaml_file:
             yaml_contents = yaml_file.read()
@@ -194,8 +204,10 @@ def list_jobs(wf: Workflow) -> None:
 @bluish_cli.command("run")
 @click.argument("job_id", type=str, required=True)
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
-def run_job(wf: Workflow, job_id: str, no_deps: bool) -> None:
+def run_job(wf: Workflow, job_id: str, no_deps: bool, args: tuple[str]) -> None:
+    wf.set_inputs({k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)})
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")

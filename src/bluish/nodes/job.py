@@ -9,7 +9,7 @@ from bluish.logging import debug, error, info, warning
 from bluish.utils import decorate_for_log
 
 
-class Job(bluish.nodes.InputOutputNode):
+class Job(bluish.nodes.Node):
     NODE_TYPE = "job"
 
     def __init__(

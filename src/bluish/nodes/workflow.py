@@ -20,6 +20,7 @@ class Workflow(bluish.nodes.Node):
         self.sys_env: dict
         self.jobs: dict
         self.runs_on_host: dict[str, Any] | None
+        self._inputs: dict[str, str] | None = None
 
         self._job_definitions: dict = {}
         for k, v in self.attrs.jobs.items():
@@ -27,6 +28,10 @@ class Workflow(bluish.nodes.Node):
             self._job_definitions[k] = bluish.nodes.JobDefinition(**v)
 
         self.reset()
+
+    @property
+    def inputs(self) -> dict[str, str]:
+        return self._inputs or {}
 
     def reset(self) -> None:
         self.matrix = {}
@@ -49,6 +54,34 @@ class Workflow(bluish.nodes.Node):
 
         for k, v in self._job_definitions.items():
             self.jobs[k] = bluish.nodes.job.Job(self, v)
+
+    def set_inputs(self, inputs: dict[str, str]) -> None:
+        def is_true(v: Any) -> bool:
+            return v in ("true", "1", True)
+
+        self._inputs = {}
+        for param in self.attrs.inputs:
+            name = param.get("name")
+            if not name:
+                raise ValueError("Invalid input parameter (missing name)")
+
+            if is_true(param.get("sensitive")):
+                self.sensitive_inputs.add(name)
+
+            if name in inputs or "default" in param:
+                self._inputs[name] = self.expand_expr(
+                    inputs.get(name, param.get("default"))
+                )
+            elif is_true(param.get("required")):
+                raise ValueError(f"Missing required input parameter: {name}")
+
+        # Check for unknown input parameters
+        unknowns = list(k for k in inputs.keys() if k not in self._inputs)
+        if unknowns:
+            if len(unknowns) == 1:
+                raise ValueError(f"Unknown input parameter: {unknowns[0]}")
+            else:
+                raise ValueError(f"Unknown input parameters: {unknowns}")
 
     def dispatch(self) -> bluish.process.ProcessResult:
         self.reset()

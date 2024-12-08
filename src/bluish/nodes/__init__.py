@@ -97,6 +97,7 @@ class Node:
         self.result = bluish.process.ProcessResult()
         self.failed = False
         self.status = bluish.core.ExecutionStatus.PENDING
+        self.sensitive_inputs: set[str] = {"password", "token"}
 
         self._expression_parser: Callable[[str], Any] | None = None
 
@@ -192,12 +193,6 @@ class Node:
         return self.expand_expr(result)
 
 
-class InputOutputNode(Node):
-    def __init__(self, parent: Node, definition: Definition):
-        super().__init__(parent, definition)
-        self.sensitive_inputs: set[str] = {"password", "token"}
-
-
 class CircularDependencyError(Exception):
     pass
 
@@ -212,8 +207,8 @@ EXPR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
 ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
 
 
-def _step_or_job(ctx: Node) -> InputOutputNode:
-    if isinstance(ctx, InputOutputNode):
+def _step_or_job(ctx: Node) -> Node:
+    if ctx.NODE_TYPE == "step" or ctx.NODE_TYPE == "job":
         return ctx
     raise ValueError(f"Can't find step or job in context of type: {ctx.NODE_TYPE}")
 
@@ -337,7 +332,7 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
     elif root == "step":
         return _try_get_value(_step(ctx), varname, raw)
     elif root == "inputs":
-        node = _step_or_job(ctx)
+        node = ctx
         if varname in node.inputs:
             if varname in node.sensitive_inputs:
                 return prepare_value(SafeString(node.inputs[varname], "********"))
@@ -422,7 +417,7 @@ def _expand_expr(
     return ctx.expression_parser(value)
 
 
-def can_dispatch(context: InputOutputNode) -> bool:
+def can_dispatch(context: Node) -> bool:
     if context.attrs._if is None:
         return True
 

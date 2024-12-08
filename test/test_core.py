@@ -418,6 +418,58 @@ jobs:
         pass
 
 
+def test_workflow_inputs() -> None:
+    wf = create_workflow("""
+inputs:
+    - name: TEST_INPUT
+      required: true
+
+jobs:
+    test:
+        steps:
+            - run: |
+                echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
+""")
+    wf.set_inputs({"TEST_INPUT": "World"})
+    _ = wf.dispatch()
+    assert wf.get_value("jobs.test.stdout") == "Hello, World!"
+
+
+def test_workflow_unexpected_inputs() -> None:
+    try:
+        wf = create_workflow("""
+jobs:
+    test:
+        steps:
+            - run: |
+                echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
+""")
+        wf.set_inputs({
+            "UNEXPECTED_INPUT": "Unexpected"
+        })
+        raise AssertionError("Unexpected input not detected")
+    except ValueError as ex:
+        assert str(ex) == "Unknown input parameter: UNEXPECTED_INPUT"
+
+
+def test_workflow_optional_inputs() -> None:
+    wf = create_workflow("""
+inputs:
+    - name: TEST_INPUT
+      required: false
+      default: "World"
+
+jobs:
+    test:
+        steps:
+            - run: |
+                echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
+""")
+    wf.set_inputs({})
+    _ = wf.dispatch()
+    assert wf.get_value("jobs.test.stdout") == "Hello, World!"
+
+
 def test_cwd() -> None:
     wf = create_workflow("""
 working_directory: /tmp

@@ -5,7 +5,7 @@ import bluish.process
 from bluish.logging import info
 
 
-class Step(nodes.InputOutputNode):
+class Step(nodes.Node):
     NODE_TYPE = "step"
 
     def __init__(self, parent: nodes.Node, definition: nodes.Definition):

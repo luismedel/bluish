@@ -301,9 +301,21 @@ JOB_SCHEMA = Object(
 )
 
 
+WORKFLOW_INPUT_SCHEMA = Object(
+    {
+        "name": Str,
+        "description": Optional(Str),
+        "required": Bool(default=False),
+        "sensitive": Bool(default=False),
+        "default": Optional(AnyType),
+    }
+)
+
+
 WORKFLOW_SCHEMA = Object(
     {
         **_COMMON_PROPERTIES,
+        "inputs": List(WORKFLOW_INPUT_SCHEMA, default=list),
         "runs_on": Optional(Str),
         "jobs": Dict(Str, JOB_SCHEMA),
     }
