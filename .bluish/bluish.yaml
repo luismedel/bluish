@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.9.0"
+  project_version: "0.9.1"
   python_version: "3.12"
 
 jobs:
