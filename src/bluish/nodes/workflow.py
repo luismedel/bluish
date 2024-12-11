@@ -126,7 +126,19 @@ class Workflow(bluish.nodes.Node):
     def dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool
     ) -> bluish.process.ProcessResult | None:
-        return self.__dispatch_job(job, no_deps, set())
+        cleanup_host = False
+        if not self.runs_on_host:
+            self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
+                self.expand_expr(self.attrs.runs_on)
+            )
+            cleanup_host = True
+        result = self.__dispatch_job(job, no_deps, set())
+
+        if cleanup_host:
+            bluish.process.cleanup_host(self.runs_on_host)
+            self.runs_on_host = None
+
+        return result
 
     def __dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool, visited_jobs: set[str]
@@ -166,13 +178,16 @@ class Workflow(bluish.nodes.Node):
                     job.runs_on_host = self.runs_on_host
                 
                 job.matrix = {**wf_matrix, **job_matrix}
-                result = job.dispatch()
-
-                if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
-                    bluish.process.cleanup_host(job.runs_on_host)
-                    job.runs_on_host = None
-
-                if result and result.failed:
-                    return result
+                
+                try:
+                    result = job.dispatch()
+                    if result and result.failed:
+                        return result
+                except:
+                    raise
+                finally:
+                    if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
+                        bluish.process.cleanup_host(job.runs_on_host)
+                        job.runs_on_host = None
 
         return bluish.process.ProcessResult()
