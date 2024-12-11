@@ -8,6 +8,7 @@ inputs:
 
 runs_on:
   host: docker://python:${{ python_version }}-slim
+  automount: true
 
 jobs:
   _prepare_lint:
