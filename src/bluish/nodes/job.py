@@ -21,7 +21,7 @@ class Job(bluish.nodes.Node):
 
         super().__init__(parent, definition)
 
-        self.runs_on_host: dict[str, Any] | None
+        self.runs_on_host: dict[str, Any] | None = None
         self.matrix: dict[str, Any]
         self.steps: list[bluish.nodes.step.Step]
 
@@ -35,7 +35,7 @@ class Job(bluish.nodes.Node):
     def reset(self) -> None:
         import bluish.nodes.step
 
-        self.runs_on_host = None
+        self._runs_on_host = None
         self.matrix = {}
         self.steps = []
 
@@ -47,13 +47,6 @@ class Job(bluish.nodes.Node):
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         info(f"** Run job '{self.display_name}'")
-
-        if self.attrs.runs_on:
-            self.runs_on_host = bluish.process.prepare_host(
-                self.expand_expr(self.attrs.runs_on)
-            )
-        else:
-            self.runs_on_host = self.parent.runs_on_host  # type: ignore
 
         try:
             bluish.nodes.log_dict(self.matrix, header="matrix", ctx=self)
@@ -77,8 +70,9 @@ class Job(bluish.nodes.Node):
         finally:
             if self.status == bluish.core.ExecutionStatus.RUNNING:
                 self.status = bluish.core.ExecutionStatus.FINISHED
-            bluish.process.cleanup_host(self.runs_on_host)
-            self.runs_on_host = None
+            if self._runs_on_host:
+                bluish.process.cleanup_host(self._runs_on_host)
+            self._runs_on_host = None
 
         return self.result
 
@@ -100,15 +94,15 @@ class Job(bluish.nodes.Node):
         if "${{" in command:
             raise ValueError("Command contains unexpanded variables")
 
-        host = self.runs_on_host
-
         if context.get_inherited_attr("is_sensitive", False):
             stream_output = False
 
         # Define where to capture the output with the >> operator
         capture_filename = f"/tmp/{uuid4().hex}"
         debug(f"Capture file: {capture_filename}")
-        touch_result = bluish.process.run(f"touch {capture_filename}", host)
+        touch_result = bluish.process.run(
+            f"touch {capture_filename}", self.runs_on_host
+        )
         if touch_result.failed:
             error(
                 f"Failed to create capture file {capture_filename}: {touch_result.error}"
@@ -141,7 +135,9 @@ class Job(bluish.nodes.Node):
         if working_dir:
             debug(f"Working dir: {working_dir}")
             debug("Making sure working directory exists...")
-            mkdir_result = bluish.process.run(f"mkdir -p {working_dir}", host)
+            mkdir_result = bluish.process.run(
+                f"mkdir -p {working_dir}", self.runs_on_host
+            )
             if mkdir_result.failed:
                 error(
                     f"Failed to create working directory {working_dir}: {mkdir_result.error}"
@@ -158,14 +154,14 @@ class Job(bluish.nodes.Node):
 
         run_result = bluish.process.run(
             command,
-            host_opts=host,
+            host_opts=self.runs_on_host,
             stdout_handler=stdout_handler if stream_output else None,
             stderr_handler=stderr_handler if stream_output else None,
         )
 
         # HACK: We should use our own process.read_file here,
         # but it currently causes an infinite recursion
-        output_result = bluish.process.run(f"cat {capture_filename}", host)
+        output_result = bluish.process.run(f"cat {capture_filename}", self.runs_on_host)
         if output_result.failed:
             error(f"Failed to read capture file: {output_result.error}")
             return output_result

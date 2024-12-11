@@ -1,9 +1,8 @@
 import contextlib
-import logging
 import subprocess
 from typing import Any, Callable
 
-from bluish.logging import debug
+from bluish.logging import debug, info
 
 SHELLS = {
     "bash": "bash -euo pipefail",
@@ -44,28 +43,58 @@ def _escape_command(command: str) -> str:
     return command.replace("\\", r"\\\\").replace("$", "\\$")
 
 
-def _get_docker_pid(host: str) -> str:
+def _get_docker_pid(host: str, docker_args: dict[str, Any]) -> str:
     """Gets the container id from the container name or id."""
 
     docker_pid = run(f"docker ps -f name={host} -qa").stdout.strip()
-    if not docker_pid:
-        docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
-    if not docker_pid:
-        logging.info(f"Preparing container {host}...")
-        command = f"docker run --detach {host} sleep infinity"
-        debug(f" > {command}")
-        run_result = run(command)
-        if run_result.failed:
-            raise ValueError(f"Could not start container {host}: {run_result.error}")
-        docker_pid = run_result.stdout.strip()
-        debug(f"Docker pid {docker_pid}")
+    if docker_pid:
+        info(f"Found container {host} with pid {docker_pid}")
+        return docker_pid
+
+    docker_pid = run(f"docker ps -f id={host} -qa").stdout.strip()
+    if docker_pid:
+        info(f"Found container {host} with pid {docker_pid}")
+        return docker_pid
+
+    info(f"Preparing container {host}...")
+
+    opts: str = ""
+
+    if docker_args.get("automount", False):
+        if "-v" in docker_args or "--volume" in docker_args:
+            raise ValueError("To use custom volumes, set automount to false")
+        if "-w" in docker_args or "--workdir" in docker_args:
+            raise ValueError("To use custom workdir, set automount to false")
+
+        opts += " -v .:/mnt"
+        opts += " -w /mnt"
+
+    for k, v in docker_args.items():
+        if k == "automount":
+            continue
+        opts += f" {k}" if isinstance(v, bool) else f" {k} {v}"
+
+    command = f"docker run {opts} --detach {host} sleep infinity"
+    debug(f" > {command}")
+    run_result = run(command)
+    if run_result.failed:
+        raise ValueError(f"Could not start container {host}: {run_result.error}")
+    docker_pid = run_result.stdout.strip()
+    info(f" - Container pid {docker_pid}")
+
     return docker_pid
 
 
 def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
     """Prepares a host for running commands."""
 
-    host = opts.get("host", None) if isinstance(opts, dict) else opts
+    host_args: dict[str, Any] | None = None
+    if isinstance(opts, dict):
+        host = opts.get("host", None)
+        host_args = {k: v for k, v in opts.items() if k != "host"}
+    else:
+        host = opts
+
     if not host:
         return {}
 
@@ -74,12 +103,12 @@ def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
 
     if host.startswith("docker://"):
         host = host[9:]
-        docker_pid = _get_docker_pid(host)
+        docker_pid = _get_docker_pid(host, host_args or {})
         if not docker_pid:
             raise ValueError(f"Could not find container with name or id {host}")
-        return {"host": f"docker://{docker_pid}"}
+        return {"host": f"docker://{docker_pid}", **(host_args if host_args else {})}
     elif host.startswith("ssh://"):
-        return {"host": host, **(opts if isinstance(opts, dict) else {})}
+        return {"host": host, **(host_args if host_args else {})}
     else:
         raise ValueError(f"Unsupported host: {host}")
 
@@ -98,7 +127,7 @@ def cleanup_host(host_opts: dict[str, Any] | None) -> None:
 
     if host.startswith("docker://"):
         host = host[9:]
-        logging.info(f"Stopping and removing container {host}...")
+        info(f"Stopping and removing container {host}...")
 
         with contextlib.suppress(Exception):
             run(f"docker stop {host}")

@@ -2,6 +2,13 @@
 var:
   python_version: "3.12"
 
+inputs:
+  - name: test
+    default: 1
+
+runs_on:
+  host: docker://python:${{ python_version }}-slim
+
 jobs:
   _prepare_lint:
     name: Prepare linters

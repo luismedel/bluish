@@ -791,6 +791,81 @@ jobs:
     assert "3.20.3" in wf.jobs["test_job"].result.stdout
 
 
+def test_runs_on_job_automount() -> None:
+    wf = create_workflow("""
+jobs:
+    test_job:
+        runs_on:
+            host: docker://alpine:3.20.3
+            automount: true
+        steps:
+            - run: |
+                  pwd
+""")
+    _ = wf.dispatch()
+
+    assert wf.jobs["test_job"].result.stdout == "/mnt"
+
+
+def test_runs_on_job_no_automount(temp_file) -> None:
+    filename = str(temp_file.name)
+
+    temp_file.write(b"Hello, World!")
+    temp_file.flush()
+
+    wf = create_workflow(f"""
+jobs:
+    test_job:
+        runs_on:
+            host: docker://alpine:3.20.3
+            -v: {filename}:/tmp/temp-file
+        steps:
+            - run: |
+                  cat /tmp/temp-file
+""")
+    _ = wf.dispatch()
+
+    assert wf.jobs["test_job"].result.stdout == "Hello, World!"
+
+
+def test_runs_on_job_automount_fails_if_mounts() -> None:
+    wf = create_workflow("""
+jobs:
+    test_job:
+        runs_on:
+            host: docker://alpine:3.20.3
+            automount: true
+            -v: .:/mnt
+        steps:
+            - run: |
+                  echo "nop"
+""")
+    try:
+        _ = wf.dispatch()
+        raise AssertionError("Volume mount not detected")
+    except ValueError as ex:
+        assert str(ex) == "To use custom volumes, set automount to false"
+
+
+def test_runs_on_job_automount_fails_if_workdir() -> None:
+    wf = create_workflow("""
+jobs:
+    test_job:
+        runs_on:
+            host: docker://alpine:3.20.3
+            automount: true
+            -w: /mnt
+        steps:
+            - run: |
+                  echo "nop"
+""")
+    try:
+        _ = wf.dispatch()
+        raise AssertionError("Volume mount not detected")
+    except ValueError as ex:
+        assert str(ex) == "To use custom workdir, set automount to false"
+
+    
 def test_runs_on_workflow() -> None:
     wf = create_workflow("""
 runs_on: docker://alpine:3.20.3

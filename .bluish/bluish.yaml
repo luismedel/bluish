@@ -1,6 +1,6 @@
 
 var:
-  project_version: "0.8.4"
+  project_version: "0.9.0"
   python_version: "3.12"
 
 jobs:
@@ -8,7 +8,9 @@ jobs:
 
     name: Publish the latest release of Bluish 
 
-    runs_on: docker://python:${{ python_version }}-alpine
+    runs_on:
+      host: docker://python:${{ python_version }}-alpine
+      automount: true
 
     steps:
       - name: Install required packages
@@ -30,10 +32,6 @@ jobs:
         run: |
           echo "Didn't get a valid PYPI_VERSION"
           false
-
-      - uses: git/checkout
-        with:
-          repository: https://github.com/luismedel/bluish
 
       - name: Abort if upload is not needed
         if: ${{ project_version == pypi_version }}

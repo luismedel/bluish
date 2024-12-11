@@ -291,17 +291,7 @@ STEP_SCHEMA = Object(
 )
 
 
-JOB_SCHEMA = Object(
-    {
-        **_COMMON_PROPERTIES,
-        "runs_on": Optional(Str),
-        "depends_on": DefaultStringList,
-        "steps": List(STEP_SCHEMA),
-    }
-)
-
-
-WORKFLOW_INPUT_SCHEMA = Object(
+INPUT_DEFINITION_SCHEMA = Object(
     {
         "name": Str,
         "description": Optional(Str),
@@ -312,10 +302,21 @@ WORKFLOW_INPUT_SCHEMA = Object(
 )
 
 
+JOB_SCHEMA = Object(
+    {
+        **_COMMON_PROPERTIES,
+        "inputs": List(INPUT_DEFINITION_SCHEMA, default=list),
+        "runs_on": Optional(Str),
+        "depends_on": DefaultStringList,
+        "steps": List(STEP_SCHEMA),
+    }
+)
+
+
 WORKFLOW_SCHEMA = Object(
     {
         **_COMMON_PROPERTIES,
-        "inputs": List(WORKFLOW_INPUT_SCHEMA, default=list),
+        "inputs": List(INPUT_DEFINITION_SCHEMA, default=list),
         "runs_on": Optional(Str),
         "jobs": Dict(Str, JOB_SCHEMA),
     }

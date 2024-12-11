@@ -2,7 +2,7 @@ import base64
 import re
 from collections import ChainMap, namedtuple
 from itertools import product
-from typing import Any, Callable, Generator, Optional, Sequence, TypeVar, cast
+from typing import Any, Callable, Generator, Iterable, Optional, Sequence, TypeVar, cast
 
 import bluish.core
 import bluish.process
@@ -23,7 +23,7 @@ def log_dict(
     _dict: dict | ChainMap,
     header: str,
     ctx: "Node | None" = None,
-    sensitive_keys: Sequence[str] = [],
+    sensitive_keys: Sequence[str] | Iterable[str] = (),
 ) -> None:
     if not _dict:
         return
@@ -160,6 +160,8 @@ class Node:
             return _expand_expr(self, value)
         elif isinstance(value, list):
             return [_expand_expr(self, v) for v in value]
+        elif isinstance(value, dict):
+            return {k: _expand_expr(self, v) for k, v in value.items()}
         else:
             return value
 

@@ -86,12 +86,21 @@ class Workflow(bluish.nodes.Node):
     def dispatch(self) -> bluish.process.ProcessResult:
         self.reset()
 
-        self.status = bluish.core.ExecutionStatus.RUNNING
-
-        if self.attrs.runs_on:
-            self.runs_on_host = bluish.process.prepare_host(
+        cleanup_host = False
+        if not self.runs_on_host:
+            self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
                 self.expand_expr(self.attrs.runs_on)
             )
+            cleanup_host = True
+
+        self.status = bluish.core.ExecutionStatus.RUNNING
+
+        bluish.nodes.log_dict(
+            self.inputs,
+            header="with",
+            ctx=self,
+            sensitive_keys=self.sensitive_inputs,
+        )
 
         try:
             for job in self.jobs.values():
@@ -109,8 +118,10 @@ class Workflow(bluish.nodes.Node):
         finally:
             if self.status == bluish.core.ExecutionStatus.RUNNING:
                 self.status = bluish.core.ExecutionStatus.FINISHED
-            bluish.process.cleanup_host(self.runs_on_host)
-            self.runs_on_host = None
+
+            if cleanup_host:
+                bluish.process.cleanup_host(self.runs_on_host)
+                self.runs_on_host = None
 
     def dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool
@@ -146,8 +157,21 @@ class Workflow(bluish.nodes.Node):
         for wf_matrix in bluish.nodes._generate_matrices(self):
             for job_matrix in bluish.nodes._generate_matrices(job):
                 job.reset()
+
+                if job.attrs.runs_on:
+                    job.runs_on_host = bluish.process.prepare_host(
+                        self.expand_expr(job.attrs.runs_on)
+                    )
+                else:
+                    job.runs_on_host = self.runs_on_host
+                
                 job.matrix = {**wf_matrix, **job_matrix}
                 result = job.dispatch()
+
+                if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
+                    bluish.process.cleanup_host(job.runs_on_host)
+                    job.runs_on_host = None
+
                 if result and result.failed:
                     return result
 
