@@ -145,7 +145,6 @@ class Workflow(bluish.nodes.Node):
 
         for wf_matrix in bluish.nodes._generate_matrices(self):
 
-            self.reset()
             self.matrix = wf_matrix
 
             cleanup_host = False
