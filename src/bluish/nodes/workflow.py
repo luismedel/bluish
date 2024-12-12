@@ -86,13 +86,6 @@ class Workflow(bluish.nodes.Node):
     def dispatch(self) -> bluish.process.ProcessResult:
         self.reset()
 
-        cleanup_host = False
-        if not self.runs_on_host:
-            self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
-                self.expand_expr(self.attrs.runs_on)
-            )
-            cleanup_host = True
-
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         bluish.nodes.log_dict(
@@ -119,26 +112,10 @@ class Workflow(bluish.nodes.Node):
             if self.status == bluish.core.ExecutionStatus.RUNNING:
                 self.status = bluish.core.ExecutionStatus.FINISHED
 
-            if cleanup_host:
-                bluish.process.cleanup_host(self.runs_on_host)
-                self.runs_on_host = None
-
     def dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool
     ) -> bluish.process.ProcessResult | None:
-        cleanup_host = False
-        if not self.runs_on_host:
-            self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
-                self.expand_expr(self.attrs.runs_on)
-            )
-            cleanup_host = True
-        result = self.__dispatch_job(job, no_deps, set())
-
-        if cleanup_host:
-            bluish.process.cleanup_host(self.runs_on_host)
-            self.runs_on_host = None
-
-        return result
+        return self.__dispatch_job(job, no_deps, set())
 
     def __dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool, visited_jobs: set[str]
@@ -167,27 +144,45 @@ class Workflow(bluish.nodes.Node):
                     return result
 
         for wf_matrix in bluish.nodes._generate_matrices(self):
-            for job_matrix in bluish.nodes._generate_matrices(job):
-                job.reset()
 
-                if job.attrs.runs_on:
-                    job.runs_on_host = bluish.process.prepare_host(
-                        self.expand_expr(job.attrs.runs_on)
-                    )
-                else:
-                    job.runs_on_host = self.runs_on_host
+            self.matrix = wf_matrix
+
+            cleanup_host = False
+            if not self.runs_on_host:
+                self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
+                    self.expand_expr(self.attrs.runs_on)
+                )
+                cleanup_host = True
+
+            try:
+                for job_matrix in bluish.nodes._generate_matrices(job):
+                    job.reset()
+
+                    job.matrix = {**wf_matrix, **job_matrix}
+
+                    if job.attrs.runs_on:
+                        job.runs_on_host = bluish.process.prepare_host(
+                            self.expand_expr(job.attrs.runs_on)
+                        )
+                    else:
+                        job.runs_on_host = self.runs_on_host
+
                 
-                job.matrix = {**wf_matrix, **job_matrix}
-                
-                try:
-                    result = job.dispatch()
-                    if result and result.failed:
-                        return result
-                except:
-                    raise
-                finally:
-                    if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
-                        bluish.process.cleanup_host(job.runs_on_host)
-                        job.runs_on_host = None
+                    try:
+                        result = job.dispatch()
+                        if result and result.failed:
+                            return result
+                    except:
+                        raise
+                    finally:
+                        if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
+                            bluish.process.cleanup_host(job.runs_on_host)
+                            job.runs_on_host = None
+            except:
+                raise
+            finally:
+                if cleanup_host:
+                    bluish.process.cleanup_host(self.runs_on_host)
+                    self.runs_on_host = None
 
         return bluish.process.ProcessResult()

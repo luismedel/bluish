@@ -328,9 +328,9 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
             raise ValueError(f"Step {step_id} not found")
         return _try_get_value(step, varname, raw)
     elif root == "matrix":
-        job = cast(bluish.nodes.job.Job, _job(ctx))
-        if varname in job.matrix:
-            return prepare_value(job.matrix[varname])
+        matrix = getattr(ctx, "matrix", None) or getattr(ctx.parent, "matrix", None)
+        if matrix and (varname in matrix):
+            return prepare_value(matrix[varname])
     elif root == "step":
         return _try_get_value(_step(ctx), varname, raw)
     elif root == "inputs":

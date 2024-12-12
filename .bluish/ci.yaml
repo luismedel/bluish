@@ -6,10 +6,6 @@ inputs:
   - name: test
     default: 1
 
-runs_on:
-  host: docker://python:${{ python_version }}-slim
-  automount: true
-
 jobs:
   _prepare_lint:
     name: Prepare linters
