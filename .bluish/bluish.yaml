@@ -3,12 +3,11 @@ var:
   project_version: "0.9.2"
   python_version: "3.12"
 
-runs_on: docker://python:${{ python_version }}-alpine
-
 jobs:
   publish:
 
     name: Publish the latest release of Bluish 
+    runs_on: docker://python:${{ python_version }}-alpine
 
     steps:
       - name: Install required packages
