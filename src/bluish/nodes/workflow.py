@@ -145,6 +145,7 @@ class Workflow(bluish.nodes.Node):
 
         for wf_matrix in bluish.nodes._generate_matrices(self):
 
+            self.reset()
             self.matrix = wf_matrix
 
             cleanup_host = False
@@ -164,10 +165,9 @@ class Workflow(bluish.nodes.Node):
                         job.runs_on_host = bluish.process.prepare_host(
                             self.expand_expr(job.attrs.runs_on)
                         )
-                    else:
-                        job.runs_on_host = self.runs_on_host
+                        
+                    job.runs_on_host = job.runs_on_host or self.runs_on_host
 
-                
                     try:
                         result = job.dispatch()
                         if result and result.failed:
