@@ -25,20 +25,20 @@ jobs:
                   input: |
                       FROM alpine:latest
                       RUN apk add --no-cache python3 py-pip
-                      RUN pip3 install bluish==0.0.30 --break-system-packages
+                      RUN pip3 install bluish==0.8.0 --break-system-packages
                   output_file: {filename}
             - uses: docker/build
               with:
                   dockerfile: {filename}
                   context: .
                   tags:
-                      - "bluish-test-alpine:0.0.30"
+                      - "bluish-test-alpine:0.8.0"
             - run: |
-                  echo "id=$(docker image ls -f reference=bluish-test-alpine:0.0.30 -q)" >> "$BLUISH_OUTPUT"
+                  echo "id=$(docker image ls -f reference=bluish-test-alpine:0.8.0 -q)" >> "$BLUISH_OUTPUT"
               set:
                   workflow.var.docker-image-id: ${{{{ outputs.id }}}}
             - run: |
-                  docker image rm $(docker image ls -f reference=bluish-test-alpine:0.0.30 -q)
+                  docker image rm $(docker image ls -f reference=bluish-test-alpine:0.8.0 -q)
 """)
     _ = wf.dispatch()
 
