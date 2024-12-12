@@ -1,5 +1,4 @@
 import os
-from collections import ChainMap
 from typing import cast
 
 import bluish.actions.base
@@ -19,17 +18,14 @@ class RunCommand(bluish.actions.base.Action):
     )
 
     def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
-        env = ChainMap(step.env, step.parent.env, step.parent.parent.env)  # type: ignore
-
         bluish.nodes.log_dict(
-            env, header="env", ctx=step, sensitive_keys=self.SENSITIVE_INPUTS
+            step.env, header="env", ctx=step, sensitive_keys=self.SENSITIVE_INPUTS
         )
 
         if not step.attrs.run:
             return bluish.process.ProcessResult()
 
         command = step.attrs.run.strip()
-
         echo_commands = step.get_inherited_attr("echo_commands", True)
         echo_output = step.get_inherited_attr("echo_output", True)
         assert echo_commands is not None
@@ -39,8 +35,7 @@ class RunCommand(bluish.actions.base.Action):
 
         if echo_commands:
             info(command)
-
-        return step.parent.exec(command, step, env=env, stream_output=echo_output)  # type: ignore
+        return step.parent.exec(command, step, use_env=True, stream_output=echo_output)  # type: ignore
 
 
 class ExpandTemplate(bluish.actions.base.Action):

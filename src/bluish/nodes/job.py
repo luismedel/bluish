@@ -43,24 +43,20 @@ class Job(bluish.nodes.Node):
             step = bluish.nodes.step.Step(self, step_def)
             self.steps.append(step)
 
-    def dispatch(self) -> bluish.process.ProcessResult | None:
+    def dispatch(self) -> bluish.process.ProcessResult:
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         info(f"** Run job '{self.display_name}'")
 
         try:
             bluish.nodes.log_dict(self.matrix, header="matrix", ctx=self)
-
             if not bluish.nodes.can_dispatch(self):
                 self.status = bluish.core.ExecutionStatus.SKIPPED
                 info("Job skipped")
-                return None
+                return bluish.process.ProcessResult.EMPTY
 
             for step in self.steps:
                 result = step.dispatch()
-                if not result:
-                    continue
-
                 self.result = result
 
                 if result.failed and not step.attrs.continue_on_error:
@@ -86,8 +82,8 @@ class Job(bluish.nodes.Node):
         self,
         command: str,
         context: bluish.nodes.Node,
-        env: dict[str, str] | None = None,
         shell: str | None = None,
+        use_env: bool = False,
         stream_output: bool = False,
     ) -> bluish.process.ProcessResult:
         command = context.expand_expr(command).strip()
@@ -109,7 +105,7 @@ class Job(bluish.nodes.Node):
             )
             return touch_result
 
-        env = env or {}
+        env = context.env if use_env else {}
 
         if "BLUISH_OUTPUT" in env:
             warning(

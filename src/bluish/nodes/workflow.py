@@ -10,6 +10,41 @@ import bluish.process
 from bluish.logging import debug, error, info
 
 
+class PrepareHostContext:
+    def __init__(
+        self, node: bluish.nodes.Node, existing_host: dict[str, Any] | None
+    ) -> None:
+        self.node = node
+        self.existing_host = existing_host
+        self.cleanup_host = False
+
+    def __enter__(self) -> None:
+        if self.node.attrs.runs_on and not getattr(self.node, "runs_on_host", None):
+            runs_on_host = bluish.process.prepare_host(
+                self.node.expand_expr(self.node.attrs.runs_on)
+            )
+            setattr(self.node, "runs_on_host", runs_on_host)
+            self.cleanup_host = True
+        else:
+            setattr(self.node, "runs_on_host", self.existing_host)
+            self.cleanup_host = False
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if (
+            not self.cleanup_host
+            or getattr(self.node, "runs_on_host", None) is self.existing_host
+        ):
+            return
+        bluish.process.cleanup_host(self.node.runs_on_host)
+        setattr(self.node, "runs_on_host", None)
+
+
+def prepare_host(
+    node: bluish.nodes.Node, existing_host: dict[str, Any] | None = None
+) -> PrepareHostContext:
+    return PrepareHostContext(node, existing_host)
+
+
 class Workflow(bluish.nodes.Node):
     NODE_TYPE = "workflow"
 
@@ -35,7 +70,6 @@ class Workflow(bluish.nodes.Node):
 
     def reset(self) -> None:
         self.matrix = {}
-        self.sys_env = {}
         self.jobs = {}
         self.runs_on_host = None
 
@@ -47,13 +81,19 @@ class Workflow(bluish.nodes.Node):
             }
         )
 
-        self.sys_env = {
-            **os.environ,
-            **dotenv_values(self.attrs.env_file or ".env"),
-        }
+        self._sys_env: dict | None = None
 
         for k, v in self._job_definitions.items():
             self.jobs[k] = bluish.nodes.job.Job(self, v)
+
+    @property
+    def sys_env(self) -> dict[str, str]:
+        if self._sys_env is None:
+            self._sys_env = {
+                **os.environ,
+                **dotenv_values(self.attrs.env_file or ".env"),
+            }
+        return self._sys_env
 
     def set_inputs(self, inputs: dict[str, str]) -> None:
         def is_true(v: Any) -> bool:
@@ -98,9 +138,6 @@ class Workflow(bluish.nodes.Node):
         try:
             for job in self.jobs.values():
                 result = self.dispatch_job(job, no_deps=False)
-                if not result:
-                    continue
-
                 self.result = result
                 if result.failed and not job.attrs.continue_on_error:
                     self.failed = True
@@ -114,22 +151,22 @@ class Workflow(bluish.nodes.Node):
 
     def dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool
-    ) -> bluish.process.ProcessResult | None:
+    ) -> bluish.process.ProcessResult:
         return self.__dispatch_job(job, no_deps, set())
 
     def __dispatch_job(
         self, job: bluish.nodes.job.Job, no_deps: bool, visited_jobs: set[str]
-    ) -> bluish.process.ProcessResult | None:
-        if job.id in visited_jobs:
+    ) -> bluish.process.ProcessResult:
+        if job.attrs.id in visited_jobs:
             raise bluish.nodes.CircularDependencyError("Circular reference detected")
 
         if job.status == bluish.core.ExecutionStatus.FINISHED:
-            info(f"Job {job.id} already dispatched and finished")
+            info(f"Job {job.attrs.id} already dispatched and finished")
             return job.result
         elif job.status == bluish.core.ExecutionStatus.SKIPPED:
-            info(f"Re-running skipped job {job.id}")
+            info(f"Re-running skipped job {job.attrs.id}")
 
-        visited_jobs.add(job.id)
+        visited_jobs.add(job.attrs.id)
 
         if not no_deps:
             debug("Getting dependency map...")
@@ -139,49 +176,34 @@ class Workflow(bluish.nodes.Node):
                     raise RuntimeError(f"Invalid dependency job id: {dependency_id}")
 
                 result = self.__dispatch_job(dep_job, no_deps, visited_jobs)
-                if result and result.failed:
+                if result.failed:
                     error(f"Dependency {dependency_id} failed")
                     return result
 
-        for wf_matrix in bluish.nodes._generate_matrices(self):
+        def get_matrix_hash(matrix: dict[str, Any]) -> str:
+            return "-".join(sorted(f"{k}:{v}" for k, v in matrix.items()))
 
+        executed_matrices = set()
+
+        for wf_matrix in bluish.nodes._generate_matrices(self):
             self.matrix = wf_matrix
 
-            cleanup_host = False
-            if not self.runs_on_host:
-                self.runs_on_host = self.runs_on_host or bluish.process.prepare_host(
-                    self.expand_expr(self.attrs.runs_on)
-                )
-                cleanup_host = True
-
-            try:
+            with prepare_host(self, self.runs_on_host):
                 for job_matrix in bluish.nodes._generate_matrices(job):
+                    matrix = {**wf_matrix, **job_matrix}
+                    if matrix:
+                        matrix_hash = get_matrix_hash(matrix)
+                        if matrix_hash in executed_matrices:
+                            info("Skipping already executed matrix...")
+                            continue
+                        executed_matrices.add(matrix_hash)
+
                     job.reset()
+                    job.matrix = matrix
 
-                    job.matrix = {**wf_matrix, **job_matrix}
-
-                    if job.attrs.runs_on:
-                        job.runs_on_host = bluish.process.prepare_host(
-                            self.expand_expr(job.attrs.runs_on)
-                        )
-                        
-                    job.runs_on_host = job.runs_on_host or self.runs_on_host
-
-                    try:
+                    with prepare_host(job, self.runs_on_host):
                         result = job.dispatch()
-                        if result and result.failed:
+                        if result.failed:
                             return result
-                    except:
-                        raise
-                    finally:
-                        if job.runs_on_host and job.runs_on_host is not self.runs_on_host:
-                            bluish.process.cleanup_host(job.runs_on_host)
-                            job.runs_on_host = None
-            except:
-                raise
-            finally:
-                if cleanup_host:
-                    bluish.process.cleanup_host(self.runs_on_host)
-                    self.runs_on_host = None
 
         return bluish.process.ProcessResult()

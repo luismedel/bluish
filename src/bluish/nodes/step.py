@@ -24,15 +24,15 @@ class Step(nodes.Node):
         elif self.attrs.run:
             return self.attrs.run.split("\n", maxsplit=1)[0]
         else:
-            return self.id
+            return self.attrs.id
 
-    def dispatch(self) -> bluish.process.ProcessResult | None:
+    def dispatch(self) -> bluish.process.ProcessResult:
         info(f"* Run step '{self.display_name}'")
 
         if not nodes.can_dispatch(self):
             self.status = bluish.core.ExecutionStatus.SKIPPED
             info(" >>> Skipped")
-            return None
+            return bluish.process.ProcessResult.EMPTY
 
         self.status = bluish.core.ExecutionStatus.RUNNING
 

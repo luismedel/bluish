@@ -91,57 +91,70 @@ class Node:
     NODE_TYPE: str = ""
 
     def __init__(self, parent: Optional["Node"], definition: Definition):
-        self._parent = parent
+        self.parent = parent
         self.attrs = definition
 
         self.result = bluish.process.ProcessResult()
         self.failed = False
         self.status = bluish.core.ExecutionStatus.PENDING
+
+        self._outputs: dict[str, Any] = {}
         self.sensitive_inputs: set[str] = {"password", "token"}
+
+        self._env: ChainMap | None = None
+        self._var: ChainMap | None = None
+        self._matrix: ChainMap | None = None
+        self._secrets: ChainMap | None = None
 
         self._expression_parser: Callable[[str], Any] | None = None
 
     @property
-    def parent(self) -> "Node":
-        return self._parent  # type: ignore
-
-    def __contains__(self, name: str) -> bool:
-        return name in self.__dict__ or name in self.attrs
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.attrs, name)
-
-    @property
-    def id(self) -> str:
-        return self.attrs.id
-
-    @property
-    def name(self) -> str:
-        return self.attrs.name
-
-    @property
-    def env(self) -> dict[str, Any]:
-        return self.attrs.env
-
-    @property
-    def var(self) -> dict[str, Any]:
-        return self.attrs.var
-
-    @property
-    def secrets(self) -> dict[str, str]:
-        return self.attrs.secrets
-
-    @property
     def inputs(self) -> dict[str, Any]:
-        return self.attrs._with
+        return self.attrs._with or {}
 
     @property
     def outputs(self) -> dict[str, Any]:
-        return self.attrs.outputs
+        return self._outputs
+
+    @property
+    def secrets(self) -> dict[str, str]:
+        if self._secrets is None:
+            self._secrets = ChainMap(
+                self.attrs.secrets or {}, self.parent.secrets if self.parent else {}
+            )
+        return self._secrets  # type: ignore
+
+    @property
+    def env(self) -> dict[str, Any]:
+        if self._env is None:
+            self._env = ChainMap(
+                self.attrs.env or {}, self.parent.env if self.parent else {}
+            )
+        return self._env  # type: ignore
+
+    @property
+    def var(self) -> dict[str, Any]:
+        if self._var is None:
+            self._var = ChainMap(
+                self.attrs.var or {}, self.parent.var if self.parent else {}
+            )
+        return self._var  # type: ignore
+
+    @property
+    def matrix(self) -> dict[str, Any]:
+        if self._matrix is None:
+            self._matrix = ChainMap(
+                self.attrs.matrix or {}, self.parent.matrix if self.parent else {}
+            )
+        return self._matrix  # type: ignore
+
+    @matrix.setter
+    def matrix(self, value: dict[str, Any]) -> None:
+        self._matrix = ChainMap(value, self.parent.matrix if self.parent else {})
 
     @property
     def display_name(self) -> str:
-        return self.attrs.name if self.attrs.name else self.id
+        return self.attrs.name if self.attrs.name else self.attrs.id
 
     @property
     def expression_parser(self) -> Callable[[str], Any]:
@@ -152,7 +165,7 @@ class Node:
             self._expression_parser = create_parser(self)
         return self._expression_parser
 
-    def dispatch(self) -> bluish.process.ProcessResult | None:
+    def dispatch(self) -> bluish.process.ProcessResult:
         raise NotImplementedError()
 
     def expand_expr(self, value: Any) -> Any:
@@ -175,20 +188,17 @@ class Node:
         if not _try_set_value(self, name, value):
             raise ValueError(f"Invalid variable name: {name}")
 
-    def set_attr(self, name: str, value: Any) -> None:
-        setattr(self.attrs, name, value)
-
     def get_inherited_attr(
         self, name: str, default: TResult | None = None
     ) -> TResult | None:
         result = default
         ctx: Node | None = self
         while ctx is not None:
-            if name in ctx:
-                result = cast(TResult, getattr(ctx, name))
-                break
-            elif name in ctx.attrs:
+            if name in ctx.attrs:
                 result = cast(TResult, getattr(ctx.attrs, name))
+                break
+            elif hasattr(ctx, name):
+                result = cast(TResult, getattr(ctx, name))
                 break
             else:
                 ctx = ctx.parent
@@ -292,25 +302,18 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
         elif varname == "returncode":
             return prepare_value(0 if ctx.result is None else ctx.result.returncode)
     elif root == "env":
-        current: Node | None = ctx
-        while current:
-            for k in ("sys_env", "env"):
-                dict_ = getattr(current, k, None)
-                if dict_ and varname in dict_:
-                    return prepare_value(dict_[varname])
-            current = current.parent
+        sys_env = ctx.get_inherited_attr("sys_env", None)
+        env = sys_env or ctx.env
+        if env and varname in env:
+            return prepare_value(env[varname])
     elif root == "var":
-        current = ctx
-        while current:
-            if varname in current.var:
-                return prepare_value(current.var[varname])
-            current = current.parent
+        if varname in ctx.var:
+            return prepare_value(ctx.var[varname])
     elif root == "workflow":
         return _try_get_value(_workflow(ctx), varname, raw)
     elif root == "secrets":
-        wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
-        if varname in wf.secrets:
-            return prepare_value(SafeString(cast(str, wf.secrets[varname]), "********"))
+        if varname in ctx.secrets:
+            return prepare_value(SafeString(ctx.secrets[varname], "********"))
     elif root == "jobs":
         wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
         job_id, varname = varname.split(".", maxsplit=1)
@@ -323,7 +326,7 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
     elif root == "steps":
         job = cast(bluish.nodes.job.Job, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
-        step = next((step for step in job.steps if step.id == step_id), None)
+        step = next((step for step in job.steps if step.attrs.id == step_id), None)
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_get_value(step, varname, raw)
@@ -381,7 +384,7 @@ def _try_set_value(ctx: "Node", name: str, value: str) -> bool:
     elif root == "steps":
         job = cast(bluish.nodes.job.Job, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
-        step = next((step for step in job.steps if step.id == step_id), None)
+        step = next((step for step in job.steps if step.attrs.id == step_id), None)
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_set_value(step, varname, value)

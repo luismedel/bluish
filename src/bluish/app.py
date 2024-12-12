@@ -131,8 +131,6 @@ def blu_cli(
 
     try:
         result = wf.dispatch_job(job, no_deps)
-        if not result:
-            return
         if result.failed:
             exit(result.returncode)
         else:
@@ -214,9 +212,7 @@ def run_job(wf: Workflow, job_id: str, no_deps: bool, args: tuple[str]) -> None:
 
     try:
         result = wf.dispatch_job(job, no_deps)
-        if not result:
-            return
-        elif result.failed:
+        if result.failed:
             exit(result.returncode)
         else:
             click.secho("Job completed successfully.", fg="green")

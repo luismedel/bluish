@@ -98,7 +98,7 @@ class Checkout(bluish.actions.base.Action):
             # Update the current job working dir to the newly cloned repo
             info(f"Setting working directory to: {repo_name}...")
             wd = step.get_inherited_attr("working_directory", ".")
-            step.parent.set_attr("working_directory", f"{wd}/{repo_name}")  # type: ignore
+            setattr(step.parent, "working_directory", f"{wd}/{repo_name}")
 
             return clone_result
         finally:

@@ -17,6 +17,8 @@ DEFAULT_SHELL = "sh"
 class ProcessResult(subprocess.CompletedProcess[str]):
     """The result of a process execution."""
 
+    EMPTY: "ProcessResult"
+
     def __init__(self, stdout: str = "", stderr: str = "", returncode: int = 0):
         super().__init__("", returncode, stdout, stderr)
 
@@ -37,6 +39,9 @@ class ProcessResult(subprocess.CompletedProcess[str]):
             stderr=data.stderr or "",
             returncode=data.returncode,
         )
+
+
+ProcessResult.EMPTY = ProcessResult("", "", 0)
 
 
 def _escape_command(command: str) -> str:
