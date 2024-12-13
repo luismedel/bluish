@@ -249,12 +249,6 @@ EXPR_REGEX = re.compile(r"\$?\$\{\{\s*([a-zA-Z_.][a-zA-Z0-9_.-]*)\s*\}\}")
 ValueResult = namedtuple("ValueResult", ["value", "contains_secrets"])
 
 
-def _step_or_job(ctx: Node) -> Node:
-    if ctx.NODE_TYPE == "step" or ctx.NODE_TYPE == "job":
-        return ctx
-    raise ValueError(f"Can't find step or job in context of type: {ctx.NODE_TYPE}")
-
-
 def _step(ctx: Node) -> Node:
     if ctx.NODE_TYPE == "step":
         return ctx
@@ -366,16 +360,14 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
     elif root == "step":
         return _try_get_value(_step(ctx), varname, raw)
     elif root == "inputs":
-        node = ctx
-        if varname in node.inputs:
-            if varname in node.sensitive_inputs:
-                return prepare_value(SafeString(node.inputs[varname], "********"))
-            else:
-                return prepare_value(node.inputs[varname])
+        if varname in ctx.inputs:
+            value = ctx.inputs[varname]
+            if varname in ctx.sensitive_inputs:
+                value = prepare_value(SafeString(value, "********"))
+            return prepare_value(value)
     elif root == "outputs":
-        node = _step_or_job(ctx)
-        if varname in node.outputs:
-            return prepare_value(node.outputs[varname])
+        if varname in ctx.outputs:
+            return prepare_value(ctx.outputs[varname])
 
     return None
 
@@ -424,8 +416,7 @@ def _try_set_value(ctx: "Node", name: str, value: str) -> bool:
         step.inputs[varname] = value
         return True
     elif root == "outputs":
-        node = _step_or_job(ctx)
-        node.outputs[varname] = value
+        ctx.outputs[varname] = value
         return True
 
     return False
