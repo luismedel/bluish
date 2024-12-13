@@ -1,10 +1,7 @@
 
-var:
-  python_version: "3.12"
-
 inputs:
-  - name: test
-    default: 1
+  - name: python_version
+    default: "3.11"
 
 jobs:
   _prepare_lint:
@@ -22,7 +19,7 @@ jobs:
           ruff check src/ test/
           echo ""
           mypy --version
-          mypy --ignore-missing-imports --python-version=${{ python_version }} src/ test/
+          mypy --ignore-missing-imports --python-version=${{ workflow.inputs.python_version }} src/ test/
 
   fix:
     name: Reformat the code using ruff
