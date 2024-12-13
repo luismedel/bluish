@@ -27,7 +27,9 @@ class InstallPackages(bluish.actions.base.Action):
         job = cast(bluish.nodes.job.Job, step.parent)
 
         result = bluish.process.install_package(
-            job.get_inherited_attr("runs_on_host"), step.inputs["packages"], flavor=flavor
+            job.get_inherited_attr("runs_on_host"),
+            step.inputs["packages"],
+            flavor=flavor,
         )
         if result.failed:
             error(f"Failed to install packages {package_str}\n{result.error}")

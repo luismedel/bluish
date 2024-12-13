@@ -1,5 +1,5 @@
-from contextlib import contextmanager
 import os
+from contextlib import contextmanager
 from typing import Any, Generator
 
 from dotenv import dotenv_values
@@ -12,12 +12,12 @@ from bluish.logging import debug, error, info
 
 
 @contextmanager
-def prepare_host_for(node: bluish.nodes.Node) -> Generator[dict[str, Any] | None, None, None]:
+def prepare_host_for(
+    node: bluish.nodes.Node
+) -> Generator[dict[str, Any] | None, None, None]:
     inherited = node.get_inherited_attr("runs_on_host")
     if node.attrs.runs_on:
-        runs_on_host = bluish.process.prepare_host(
-            node.expand_expr(node.attrs.runs_on)
-        )
+        runs_on_host = bluish.process.prepare_host(node.expand_expr(node.attrs.runs_on))
         node.set_attr("runs_on_host", runs_on_host)
         yield runs_on_host
         node.clear_attr("runs_on_host")

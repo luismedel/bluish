@@ -108,7 +108,6 @@ class Node:
         self._matrix: ChainMap | None
         self._secrets: ChainMap | None
 
-
     def reset(self) -> None:
         self._mutated_attrs = {}
 
@@ -210,7 +209,7 @@ class Node:
 
     def set_attr(self, name: str, value: Any) -> None:
         self._mutated_attrs[name] = value
-    
+
     def get_attr(self, name: str, default: TResult | None = None) -> TResult | None:
         if name in self._mutated_attrs:
             return self.expand_expr(self._mutated_attrs[name])
@@ -346,7 +345,7 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
         if varname in ctx.secrets:
             return prepare_value(SafeString(ctx.secrets[varname], "********"))
     elif root == "matrix":
-        if (varname in ctx.matrix):
+        if varname in ctx.matrix:
             return prepare_value(ctx.matrix[varname])
     elif root == "jobs":
         wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))

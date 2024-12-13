@@ -1,5 +1,5 @@
-from collections import ChainMap
 import inspect
+from collections import ChainMap
 from typing import Any as TAny
 from typing import Iterable, Union, cast
 

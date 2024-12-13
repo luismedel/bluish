@@ -1,5 +1,4 @@
 import base64
-from typing import Any
 from uuid import uuid4
 
 import bluish.core
@@ -20,6 +19,7 @@ class Job(bluish.nodes.Node):
         super().__init__(parent, definition)
 
         import bluish.nodes.step
+
         self.steps: list[bluish.nodes.step.Step]
 
     def reset(self) -> None:
@@ -31,7 +31,9 @@ class Job(bluish.nodes.Node):
 
         for i, step_dict in enumerate(self.attrs.steps):
             step_dict["id"] = step_dict.get("id", f"step_{i+1}")
-            step = bluish.nodes.step.Step(self, bluish.nodes.StepDefinition(**step_dict))
+            step = bluish.nodes.step.Step(
+                self, bluish.nodes.StepDefinition(**step_dict)
+            )
             self.steps.append(step)
 
     def dispatch(self) -> bluish.process.ProcessResult:
@@ -145,7 +147,9 @@ class Job(bluish.nodes.Node):
 
         # HACK: We should use our own process.read_file here,
         # but it currently causes an infinite recursion
-        output_result = bluish.process.run(f"cat {capture_filename}", self.get_inherited_attr("runs_on_host"))
+        output_result = bluish.process.run(
+            f"cat {capture_filename}", self.get_inherited_attr("runs_on_host")
+        )
         if output_result.failed:
             error(f"Failed to read capture file: {output_result.error}")
             return output_result

@@ -50,7 +50,7 @@ def _escape_command(command: str) -> str:
 
 def _get_docker_pid(host: str, docker_args: dict[str, Any] | None) -> str:
     """Gets the container id from the container name or id."""
-    
+
     docker_args = docker_args or {}
 
     docker_pid = run(f"docker ps -f name={host} -qa").stdout.strip()

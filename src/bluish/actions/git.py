@@ -38,7 +38,9 @@ def prepare_environment(step: bluish.nodes.step.Step) -> bluish.process.ProcessR
     ]
     if required_packages:
         info(f"Installing missing packages: {required_packages}...")
-        result = bluish.process.install_package(job.get_inherited_attr("runs_on_host"), required_packages)
+        result = bluish.process.install_package(
+            job.get_inherited_attr("runs_on_host"), required_packages
+        )
         if result.failed:
             error(f"Failed to install required packages. Error: {result.error}")
             return result
