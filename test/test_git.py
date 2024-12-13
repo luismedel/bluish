@@ -24,4 +24,3 @@ jobs:
 """)
     _ = wf.dispatch()
     assert wf.jobs["checkout"].result.stdout == "[![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)"
-

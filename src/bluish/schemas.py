@@ -1,3 +1,4 @@
+from collections import ChainMap
 import inspect
 from typing import Any as TAny
 from typing import Iterable, Union, cast
@@ -165,7 +166,7 @@ class Dict(Validator):
         self._value_schema = _ensure_validator_instance(value_schema)
 
     def validate(self, data: TAny) -> None:
-        if not isinstance(data, dict):
+        if not isinstance(data, (dict, ChainMap)):
             raise InvalidTypeError(self, None, data)
 
         for k, v in data.items():
@@ -187,7 +188,7 @@ class Object(Validator):
         self._reject_extra = reject_extra
 
     def validate(self, data: TAny) -> None:
-        if not isinstance(data, dict):
+        if not isinstance(data, (dict, ChainMap)):
             raise InvalidTypeError(self, None, data)
 
         all_props = self._properties.items()

@@ -48,8 +48,10 @@ def _escape_command(command: str) -> str:
     return command.replace("\\", r"\\\\").replace("$", "\\$")
 
 
-def _get_docker_pid(host: str, docker_args: dict[str, Any]) -> str:
+def _get_docker_pid(host: str, docker_args: dict[str, Any] | None) -> str:
     """Gets the container id from the container name or id."""
+    
+    docker_args = docker_args or {}
 
     docker_pid = run(f"docker ps -f name={host} -qa").stdout.strip()
     if docker_pid:
@@ -108,7 +110,7 @@ def prepare_host(opts: str | dict[str, Any] | None) -> dict[str, Any]:
 
     if host.startswith("docker://"):
         host = host[9:]
-        docker_pid = _get_docker_pid(host, host_args or {})
+        docker_pid = _get_docker_pid(host, host_args)
         if not docker_pid:
             raise ValueError(f"Could not find container with name or id {host}")
         return {"host": f"docker://{docker_pid}", **(host_args if host_args else {})}

@@ -1,5 +1,6 @@
+from contextlib import contextmanager
 import os
-from typing import Any
+from typing import Any, Generator
 
 from dotenv import dotenv_values
 
@@ -10,39 +11,23 @@ import bluish.process
 from bluish.logging import debug, error, info
 
 
-class PrepareHostContext:
-    def __init__(
-        self, node: bluish.nodes.Node, existing_host: dict[str, Any] | None
-    ) -> None:
-        self.node = node
-        self.existing_host = existing_host
-        self.cleanup_host = False
-
-    def __enter__(self) -> None:
-        if self.node.attrs.runs_on and not getattr(self.node, "runs_on_host", None):
-            runs_on_host = bluish.process.prepare_host(
-                self.node.expand_expr(self.node.attrs.runs_on)
-            )
-            setattr(self.node, "runs_on_host", runs_on_host)
-            self.cleanup_host = True
-        else:
-            setattr(self.node, "runs_on_host", self.existing_host)
-            self.cleanup_host = False
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if (
-            not self.cleanup_host
-            or getattr(self.node, "runs_on_host", None) is self.existing_host
-        ):
-            return
-        bluish.process.cleanup_host(self.node.runs_on_host)
-        setattr(self.node, "runs_on_host", None)
-
-
-def prepare_host(
-    node: bluish.nodes.Node, existing_host: dict[str, Any] | None = None
-) -> PrepareHostContext:
-    return PrepareHostContext(node, existing_host)
+@contextmanager
+def prepare_host_for(node: bluish.nodes.Node) -> Generator[dict[str, Any] | None, None, None]:
+    inherited = node.get_inherited_attr("runs_on_host")
+    if node.attrs.runs_on:
+        runs_on_host = bluish.process.prepare_host(
+            node.expand_expr(node.attrs.runs_on)
+        )
+        node.set_attr("runs_on_host", runs_on_host)
+        yield runs_on_host
+        node.clear_attr("runs_on_host")
+        if runs_on_host is not inherited:
+            runs_on_host.clear()
+            bluish.process.cleanup_host(runs_on_host)
+    else:
+        node.set_attr("runs_on_host", inherited)
+        yield inherited
+        node.clear_attr("runs_on_host")
 
 
 class Workflow(bluish.nodes.Node):
@@ -51,27 +36,8 @@ class Workflow(bluish.nodes.Node):
     def __init__(self, definition: bluish.nodes.Definition) -> None:
         super().__init__(None, definition)
 
-        self.matrix: dict
-        self.sys_env: dict
-        self.jobs: dict
-        self.runs_on_host: dict[str, Any] | None
-        self._inputs: dict[str, str] | None = None
-
-        self._job_definitions: dict = {}
-        for k, v in self.attrs.jobs.items():
-            v["id"] = k
-            self._job_definitions[k] = bluish.nodes.JobDefinition(**v)
-
-        self.reset()
-
-    @property
-    def inputs(self) -> dict[str, str]:
-        return self._inputs or {}
-
-    def reset(self) -> None:
-        self.matrix = {}
-        self.jobs = {}
-        self.runs_on_host = None
+        self._sys_env: dict[str, str | None] | None
+        self.jobs: dict[str, bluish.nodes.job.Job] = {}
 
         self.secrets.update(
             {
@@ -81,13 +47,14 @@ class Workflow(bluish.nodes.Node):
             }
         )
 
-        self._sys_env: dict | None = None
+        self._sys_env = None
 
-        for k, v in self._job_definitions.items():
-            self.jobs[k] = bluish.nodes.job.Job(self, v)
+        for k, v in self.attrs.jobs.items():
+            v["id"] = k
+            self.jobs[k] = bluish.nodes.job.Job(self, bluish.nodes.JobDefinition(**v))
 
     @property
-    def sys_env(self) -> dict[str, str]:
+    def sys_env(self) -> dict[str, str | None]:
         if self._sys_env is None:
             self._sys_env = {
                 **os.environ,
@@ -99,7 +66,6 @@ class Workflow(bluish.nodes.Node):
         def is_true(v: Any) -> bool:
             return v in ("true", "1", True)
 
-        self._inputs = {}
         for param in self.attrs.inputs:
             name = param.get("name")
             if not name:
@@ -109,14 +75,16 @@ class Workflow(bluish.nodes.Node):
                 self.sensitive_inputs.add(name)
 
             if name in inputs or "default" in param:
-                self._inputs[name] = self.expand_expr(
+                self.inputs[name] = self.expand_expr(
                     inputs.get(name, param.get("default"))
                 )
             elif is_true(param.get("required")):
                 raise ValueError(f"Missing required input parameter: {name}")
 
+        known_keys = set(p["name"] for p in self.attrs.inputs)
+
         # Check for unknown input parameters
-        unknowns = list(k for k in inputs.keys() if k not in self._inputs)
+        unknowns = list(k for k in inputs.keys() if k not in known_keys)
         if unknowns:
             if len(unknowns) == 1:
                 raise ValueError(f"Unknown input parameter: {unknowns[0]}")
@@ -124,8 +92,6 @@ class Workflow(bluish.nodes.Node):
                 raise ValueError(f"Unknown input parameters: {unknowns}")
 
     def dispatch(self) -> bluish.process.ProcessResult:
-        self.reset()
-
         self.status = bluish.core.ExecutionStatus.RUNNING
 
         bluish.nodes.log_dict(
@@ -188,7 +154,7 @@ class Workflow(bluish.nodes.Node):
         for wf_matrix in bluish.nodes._generate_matrices(self):
             self.matrix = wf_matrix
 
-            with prepare_host(self, self.runs_on_host):
+            with prepare_host_for(self):
                 for job_matrix in bluish.nodes._generate_matrices(job):
                     matrix = {**wf_matrix, **job_matrix}
                     if matrix:
@@ -201,7 +167,7 @@ class Workflow(bluish.nodes.Node):
                     job.reset()
                     job.matrix = matrix
 
-                    with prepare_host(job, self.runs_on_host):
+                    with prepare_host_for(job):
                         result = job.dispatch()
                         if result.failed:
                             return result

@@ -38,7 +38,7 @@ def prepare_environment(step: bluish.nodes.step.Step) -> bluish.process.ProcessR
     ]
     if required_packages:
         info(f"Installing missing packages: {required_packages}...")
-        result = bluish.process.install_package(job.runs_on_host, required_packages)
+        result = bluish.process.install_package(job.get_inherited_attr("runs_on_host"), required_packages)
         if result.failed:
             error(f"Failed to install required packages. Error: {result.error}")
             return result
@@ -98,7 +98,8 @@ class Checkout(bluish.actions.base.Action):
             # Update the current job working dir to the newly cloned repo
             info(f"Setting working directory to: {repo_name}...")
             wd = step.get_inherited_attr("working_directory", ".")
-            setattr(step.parent, "working_directory", f"{wd}/{repo_name}")
+            assert step.parent is not None
+            step.parent.set_attr("working_directory", f"{wd}/{repo_name}")
 
             return clone_result
         finally:
