@@ -1,13 +1,16 @@
 
+inputs:
+  - name: python_version
+    default: "3.10"
+
 var:
   project_version: "0.9.7"
-  python_version: "3.12"
 
 jobs:
   publish:
 
     name: Publish the latest release of Bluish 
-    runs_on: docker://python:${{ python_version }}-alpine
+    runs_on: docker://python:${{ workflow.inputs.python_version }}-alpine
 
     steps:
       - name: Install required packages
@@ -89,7 +92,7 @@ jobs:
             FROM ${{ matrix.flavor }}:latest
             RUN apk add --no-cache \
                   bash \
-                  python3~${{ python_version }} \
+                  python3~${{ workflow.inputs.python_version }} \
                   py-pip \
                   py3-virtualenv \
                   git; \
@@ -105,7 +108,7 @@ jobs:
             FROM ${{ matrix.flavor }}:latest
             RUN apt-get update -qq; \
                 apt-get install -qqy --no-install-recommends \
-                  python${{ python_version }} \
+                  python${{ workflow.inputs.python_version }} \
                   python3-pip \
                   python3-venv \
                   git; \

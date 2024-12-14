@@ -2,7 +2,7 @@ import contextlib
 import logging
 import os
 from io import StringIO
-from typing import Never
+from typing_extensions import Never
 
 import click
 import yaml
@@ -125,6 +125,7 @@ def blu_cli(
     yaml_path = locate_yaml(file)
     if not yaml_path:
         fatal("No workflow file found.")
+        return
 
     logging.info(f"Loading workflow from {yaml_path}")
     logging.info("")
@@ -135,6 +136,7 @@ def blu_cli(
     job: Job | None = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
+        return
 
     try:
         result = wf.dispatch_job(job, no_deps)
@@ -176,6 +178,7 @@ def bluish_cli(
     yaml_path = file or locate_yaml("")
     if not yaml_path:
         fatal("No workflow file found.")
+        return
 
     logging.info(f"Loading workflow from {yaml_path}")
     logging.info("")
@@ -186,6 +189,7 @@ def bluish_cli(
 
     if not yaml_contents:
         fatal("No workflow file found.")
+        return
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
     wf = Workflow(definition)
@@ -217,6 +221,7 @@ def run_job(wf: Workflow, job_id: str, no_deps: bool, args: tuple[str]) -> None:
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
+        return
 
     try:
         result = wf.dispatch_job(job, no_deps)
