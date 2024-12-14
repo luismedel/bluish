@@ -2,12 +2,12 @@ import contextlib
 import logging
 import os
 from io import StringIO
-from typing_extensions import Never
 
 import click
 import yaml
 from dotenv import dotenv_values
 from flask import Flask, abort, jsonify, request
+from typing_extensions import Never
 
 from bluish.__main__ import PROJECT_VERSION
 from bluish.core import (

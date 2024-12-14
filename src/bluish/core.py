@@ -43,4 +43,5 @@ def init_commands() -> None:
 
 def reset_commands() -> None:
     from bluish.actions import reset_actions
+
     reset_actions()
