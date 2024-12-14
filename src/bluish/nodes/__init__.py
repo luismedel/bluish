@@ -74,7 +74,10 @@ class Definition:
 
 class WorkflowDefinition(Definition):
     SCHEMA = WORKFLOW_SCHEMA
-    pass
+
+    def __init__(self, **kwargs: Any):
+        super().__init__(**kwargs)
+        self.yaml_root: str | None = None
 
 
 class JobDefinition(Definition):

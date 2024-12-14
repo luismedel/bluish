@@ -6,6 +6,7 @@ from typing import Never
 
 import click
 import yaml
+from dotenv import dotenv_values
 from flask import Flask, abort, jsonify, request
 
 from bluish.__main__ import PROJECT_VERSION
@@ -88,7 +89,13 @@ def workflow_from_file(file: str) -> Workflow:
         fatal("No workflow file found.")
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    return Workflow(definition)
+    result = Workflow(definition)
+    result.yaml_root = os.path.dirname(file)
+
+    result.add_env(**os.environ)
+    result.add_env(**dotenv_values(result.attrs.env_file or ".env"))
+
+    return result
 
 
 @click.command("blu")
@@ -182,6 +189,7 @@ def bluish_cli(
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
     wf = Workflow(definition)
+    wf.yaml_root = os.path.dirname(yaml_path)
     ctx.obj = wf
 
 

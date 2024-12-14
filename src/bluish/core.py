@@ -33,7 +33,14 @@ def init_commands() -> None:
         bluish.actions.git.Checkout,
     ]
 
-    from bluish.actions import register_action
+    from bluish.actions import register_action, register_protocol_action
 
     for klass in actions:
         register_action(klass)
+
+    register_protocol_action("file://", bluish.actions.core.RunExternal)
+
+
+def reset_commands() -> None:
+    from bluish.actions import reset_actions
+    reset_actions()

@@ -1,6 +1,6 @@
 import contextlib
 import subprocess
-from typing import Any, Callable
+from typing import Any, Callable, Generator
 
 from bluish.logging import debug, info
 
@@ -141,6 +141,30 @@ def cleanup_host(host_opts: dict[str, Any] | None) -> None:
 
         with contextlib.suppress(Exception):
             run(f"docker rm {host}")
+
+
+@contextlib.contextmanager
+def prepare_host_for(
+    node,
+    current_host: dict[str, Any] | None = None,
+) -> Generator[dict[str, Any] | None, None, None]:
+    from bluish.nodes import Node
+
+    assert isinstance(node, Node)
+
+    inherited = current_host or node.get_inherited_attr("runs_on_host")
+    if node.attrs.runs_on:
+        runs_on_host = prepare_host(node.expand_expr(node.attrs.runs_on))
+        node.set_attr("runs_on_host", runs_on_host)
+        yield runs_on_host
+        node.clear_attr("runs_on_host")
+        if runs_on_host is not inherited:
+            runs_on_host.clear()
+            cleanup_host(runs_on_host)
+    else:
+        node.set_attr("runs_on_host", inherited)
+        yield inherited
+        node.clear_attr("runs_on_host")
 
 
 def capture_subprocess_output(

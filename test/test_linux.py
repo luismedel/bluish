@@ -2,12 +2,14 @@
 from test.utils import create_workflow
 
 import pytest
-from bluish.core import init_commands
+from bluish.core import init_commands, reset_commands
 
 
 @pytest.fixture(scope="session", autouse=True)
 def initialize_commands():
     init_commands()
+    yield
+    reset_commands()
 
 
 @pytest.mark.docker

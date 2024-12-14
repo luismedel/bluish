@@ -7,6 +7,7 @@ import pytest
 from bluish.core import (
     ExecutionStatus,
     init_commands,
+    reset_commands,
 )
 from bluish.nodes import CircularDependencyError
 from bluish.process import run
@@ -16,6 +17,8 @@ from bluish.schemas import RequiredAttributeError
 @pytest.fixture(scope="session", autouse=True)
 def initialize_commands():
     init_commands()
+    yield
+    reset_commands()
 
 
 def test_multiple_jobs() -> None:

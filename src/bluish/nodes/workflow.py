@@ -1,6 +1,4 @@
-import os
-from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 from dotenv import dotenv_values
 
@@ -11,32 +9,14 @@ import bluish.process
 from bluish.logging import debug, error, info
 
 
-@contextmanager
-def prepare_host_for(
-    node: bluish.nodes.Node
-) -> Generator[dict[str, Any] | None, None, None]:
-    inherited = node.get_inherited_attr("runs_on_host")
-    if node.attrs.runs_on:
-        runs_on_host = bluish.process.prepare_host(node.expand_expr(node.attrs.runs_on))
-        node.set_attr("runs_on_host", runs_on_host)
-        yield runs_on_host
-        node.clear_attr("runs_on_host")
-        if runs_on_host is not inherited:
-            runs_on_host.clear()
-            bluish.process.cleanup_host(runs_on_host)
-    else:
-        node.set_attr("runs_on_host", inherited)
-        yield inherited
-        node.clear_attr("runs_on_host")
-
-
 class Workflow(bluish.nodes.Node):
     NODE_TYPE = "workflow"
 
     def __init__(self, definition: bluish.nodes.Definition) -> None:
         super().__init__(None, definition)
 
-        self._sys_env: dict[str, str | None] | None
+        self.yaml_root: str | None = None
+        self.sys_env: dict[str, str | None] = {}
         self.jobs: dict[str, bluish.nodes.job.Job] = {}
 
         self.secrets.update(
@@ -53,14 +33,8 @@ class Workflow(bluish.nodes.Node):
             v["id"] = k
             self.jobs[k] = bluish.nodes.job.Job(self, bluish.nodes.JobDefinition(**v))
 
-    @property
-    def sys_env(self) -> dict[str, str | None]:
-        if self._sys_env is None:
-            self._sys_env = {
-                **os.environ,
-                **dotenv_values(self.attrs.env_file or ".env"),
-            }
-        return self._sys_env
+    def add_env(self, **kwargs: str | None) -> None:
+        self.sys_env.update(kwargs)
 
     def set_inputs(self, inputs: dict[str, str]) -> None:
         def is_true(v: Any) -> bool:
@@ -154,7 +128,7 @@ class Workflow(bluish.nodes.Node):
         for wf_matrix in bluish.nodes._generate_matrices(self):
             self.matrix = wf_matrix
 
-            with prepare_host_for(self):
+            with bluish.process.prepare_host_for(self) as current_host:
                 for job_matrix in bluish.nodes._generate_matrices(job):
                     matrix = {**wf_matrix, **job_matrix}
                     if matrix:
@@ -167,7 +141,7 @@ class Workflow(bluish.nodes.Node):
                     job.reset()
                     job.matrix = matrix
 
-                    with prepare_host_for(job):
+                    with bluish.process.prepare_host_for(job, current_host) as _:
                         result = job.dispatch()
                         if result.failed:
                             return result

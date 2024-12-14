@@ -1,11 +1,15 @@
 import os
 from typing import cast
 
+import yaml
+
 import bluish.actions.base
 import bluish.nodes.job
 import bluish.nodes.step
+import bluish.nodes.workflow
 import bluish.process
 from bluish.logging import error, info
+from bluish.nodes import WorkflowDefinition
 from bluish.schemas import Int, List, Object, Optional, Str
 
 
@@ -174,3 +178,59 @@ class DownloadFile(bluish.actions.base.Action):
                 return bluish.process.ProcessResult(returncode=1)
 
         return bluish.process.ProcessResult()
+
+
+class RunExternal(bluish.actions.base.Action):
+    FQN: str = "core/run-external"
+
+    INPUTS_SCHEMA = Object(
+        {
+            "job": Optional(Str),
+        }
+    )
+
+    def run(self, step: bluish.nodes.step.Step) -> bluish.process.ProcessResult:
+        workflow = self._get_workflow(step)
+        job = workflow.jobs.get("default")
+        if not job:
+            raise ValueError("No job named 'default' found in the workflow")
+
+        with bluish.process.prepare_host_for(
+            workflow, step.get_inherited_attr("runs_on_host")
+        ):
+            workflow.set_attr("woking_dir", step.get_inherited_attr("working_dir"))
+            workflow.set_inputs(step.inputs)
+
+            result = workflow.dispatch_job(job, no_deps=False)
+            for k, v in workflow.outputs.items():
+                step.outputs[k] = v
+            return result
+
+    def _get_workflow(
+        self, step: bluish.nodes.step.Step
+    ) -> bluish.nodes.workflow.Workflow:
+        current_wf = cast(bluish.nodes.workflow.Workflow, step.parent.parent)  # type: ignore
+        path = self._get_path(current_wf.yaml_root, step.attrs.uses)
+        with open(path, "rb") as f:
+            contents = f.read()
+        definition = WorkflowDefinition(**yaml.safe_load(contents))
+        workflow = bluish.nodes.workflow.Workflow(definition)
+        workflow.yaml_root = os.path.dirname(path)
+        return workflow
+
+    def _get_path(self, root: str | None, spec: str) -> str:
+        if spec.startswith("file://"):
+            path = os.path.expanduser(spec[len("file://") :])
+            path = os.path.join(root, path) if root else path
+            if not path.endswith(".yaml") and not path.endswith(".yml"):
+                for ext in (".yaml", ".yml"):
+                    if os.path.exists(path + ext):
+                        path += ext
+                        break
+        else:
+            raise ValueError(f"Unknown file spec: {spec}")
+
+        if not os.path.exists(path):
+            raise ValueError(f"File not found: {path}")
+
+        return path
