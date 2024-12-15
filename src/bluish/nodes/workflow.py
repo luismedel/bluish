@@ -37,13 +37,12 @@ class Workflow(bluish.nodes.Node):
             v["id"] = k
             self.jobs[k] = bluish.nodes.job.Job(self, bluish.nodes.JobDefinition(**v))
 
-        if environment:
-            self._set_inputs(environment.inputs)
+        self._prepare_inputs(environment.inputs if environment else {})
 
     def add_env(self, **kwargs: str | None) -> None:
         self.sys_env.update(kwargs)
 
-    def _set_inputs(self, inputs: dict[str, str]) -> None:
+    def _prepare_inputs(self, inputs: dict[str, str]) -> None:
         def is_true(v: Any) -> bool:
             return v in ("true", "1", True)
 
