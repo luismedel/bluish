@@ -89,28 +89,6 @@ def create_environment(definition: dict[str, Any]) -> Environment:
     )
 
 
-def workflow_from_file(environment, file: str) -> Workflow:
-    """Loads the workflow from a file."""
-
-    yaml_contents: str = ""
-
-    with contextlib.suppress(FileNotFoundError):
-        with open(file, "r") as yaml_file:
-            yaml_contents = yaml_file.read()
-
-    if not yaml_contents:
-        fatal("No workflow file found.")
-
-    definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    result = Workflow(environment, definition)
-    result.yaml_root = os.path.dirname(file)
-
-    result.add_env(**os.environ)
-    result.add_env(**dotenv_values(result.attrs.env_file or ".env"))
-
-    return result
-
-
 def load_workflow(file: str, args: Iterable[str]) -> Workflow:
     yaml_contents: str = ""
     yaml_path = file or locate_yaml("")
@@ -189,11 +167,8 @@ def blu_cli(
 
     logging.info(f"Loading workflow from {yaml_path}")
     logging.info("")
-
-    environment = create_environment(
-        {"with": {k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)}}
-    )
-    wf = workflow_from_file(environment, yaml_path)
+    
+    wf = load_workflow(yaml_path, args)
     if not job_id:
         list_workflow_jobs(wf)
         return
