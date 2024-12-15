@@ -167,7 +167,7 @@ def blu_cli(
 
     logging.info(f"Loading workflow from {yaml_path}")
     logging.info("")
-    
+
     wf = load_workflow(yaml_path, args)
     if not job_id:
         list_workflow_jobs(wf)
