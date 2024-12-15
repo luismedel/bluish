@@ -14,7 +14,7 @@ def initialize_commands():
 
 @pytest.mark.docker
 def test_install_packages_ubuntu() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
   test_job:
     runs_on: docker://ubuntu:latest
@@ -31,7 +31,7 @@ jobs:
 
 @pytest.mark.docker
 def test_install_packages_alpine() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
   test_job:
     runs_on: docker://alpine:latest
@@ -48,7 +48,7 @@ jobs:
 
 @pytest.mark.docker
 def test_install_packages_failed() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
   test_job:
     runs_on: docker://alpine:latest

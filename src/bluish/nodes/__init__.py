@@ -20,15 +20,16 @@ TResult = TypeVar("TResult")
 
 
 def log_dict(
-    _dict: dict | ChainMap,
+    dict_: dict | ChainMap,
     header: str,
     ctx: "Node | None" = None,
     sensitive_keys: Sequence[str] | Iterable[str] = (),
 ) -> None:
-    if not _dict:
+    if dict_ is None or not dict_:
         return
     info(f"{header}:")
-    for k, v in _dict.items():
+    print(dict_.items())
+    for k, v in dict_.items():
         if ctx:
             v = ctx.expand_expr(v)
         if k in sensitive_keys:
@@ -108,7 +109,7 @@ class Node:
         self._outputs: dict[str, Any]
         self._env: ChainMap | None
         self._var: ChainMap | None
-        self._matrix: ChainMap | None
+        self.matrix: dict[str, Any] = {}
         self._secrets: ChainMap | None
 
     def reset(self) -> None:
@@ -118,16 +119,29 @@ class Node:
         self._outputs = {}
         self._env = None
         self._var = None
-        self._matrix = None
+        self.matrix = {}
         self._secrets = None
 
         self.result = bluish.process.ProcessResult()
         self.status = bluish.core.ExecutionStatus.PENDING
 
+    def get_opt_value(self, name: str, default: Any = None) -> Any:
+        n: Node | None = self
+        while n and n.NODE_TYPE != "environment":
+            n = n.parent
+        if n:
+            return n.attrs.get(name, default)
+        return default
+
+    def get_opt_flag(self, name: str, default: bool = False) -> bool:
+        return self.get_opt_value(name, default)  # type: ignore
+
     @property
     def inputs(self) -> dict[str, Any]:
         if self._inputs is None:
-            self._inputs = ChainMap({}, self.attrs._with)
+            self._inputs = ChainMap(
+                {}, self.attrs._with, self.parent.inputs if self.parent else {}
+            )
         return self._inputs  # type: ignore
 
     @property
@@ -157,18 +171,6 @@ class Node:
                 self.attrs.var or {}, self.parent.var if self.parent else {}
             )
         return self._var  # type: ignore
-
-    @property
-    def matrix(self) -> dict[str, Any]:
-        if self._matrix is None:
-            self._matrix = ChainMap(
-                self.attrs.matrix or {}, self.parent.matrix if self.parent else {}
-            )
-        return self._matrix  # type: ignore
-
-    @matrix.setter
-    def matrix(self, value: dict[str, Any]) -> None:
-        self._matrix = ChainMap(value, self.parent.matrix if self.parent else {})
 
     @property
     def display_name(self) -> str:
@@ -276,6 +278,18 @@ def _workflow(ctx: Node) -> Node:
     raise ValueError(f"Can't find workflow in context of type: {ctx.NODE_TYPE}")
 
 
+def _environment(ctx: Node) -> Node:
+    if ctx.NODE_TYPE == "environment":
+        return ctx
+    elif ctx.NODE_TYPE == "workflow":
+        return ctx.parent  # type: ignore
+    elif ctx.NODE_TYPE == "job":
+        return ctx.parent.parent  # type: ignore
+    elif ctx.NODE_TYPE == "step":
+        return ctx.parent.parent.parent  # type: ignore
+    raise ValueError(f"Can't find environment in context of type: {ctx.NODE_TYPE}")
+
+
 def _generate_matrices(ctx: Node) -> Generator[dict[str, Any], None, None]:
     if not ctx.attrs.matrix:
         yield {}
@@ -328,13 +342,21 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
             )
         elif varname == "returncode":
             return prepare_value(0 if ctx.result is None else ctx.result.returncode)
+    elif root == "global":
+        return _try_get_value(_environment(ctx), varname, raw)
     elif root == "workflow":
         return _try_get_value(_workflow(ctx), varname, raw)
+    elif root == "job":
+        return _try_get_value(_job(ctx), varname, raw)
+    elif root == "step":
+        return _try_get_value(_step(ctx), varname, raw)
     elif root == "env":
-        sys_env = ctx.get_inherited_attr("sys_env", None)
-        env = sys_env or ctx.env
-        if env and varname in env:
-            return prepare_value(env[varname])
+        if varname in ctx.env:
+            return prepare_value(ctx.env[varname])
+        else:
+            sys_env = ctx.get_attr("sys_env", None)
+            if sys_env and varname in sys_env:
+                return prepare_value(sys_env[varname])
     elif root == "var":
         if varname in ctx.var:
             return prepare_value(ctx.var[varname])
@@ -344,6 +366,8 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
     elif root == "matrix":
         if varname in ctx.matrix:
             return prepare_value(ctx.matrix[varname])
+        elif ctx.parent:
+            return _try_get_value(ctx.parent, f"matrix.{varname}", raw)
     elif root == "jobs":
         wf = cast(bluish.nodes.workflow.Workflow, _workflow(ctx))
         job_id, varname = varname.split(".", maxsplit=1)
@@ -351,8 +375,6 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
         if not job:
             raise ValueError(f"Job {job_id} not found")
         return _try_get_value(job, varname, raw)
-    elif root == "job":
-        return _try_get_value(_job(ctx), varname, raw)
     elif root == "steps":
         job = cast(bluish.nodes.job.Job, _job(ctx))
         step_id, varname = varname.split(".", maxsplit=1)
@@ -360,8 +382,6 @@ def _try_get_value(ctx: Node, name: str, raw: bool = False) -> Any:
         if not step:
             raise ValueError(f"Step {step_id} not found")
         return _try_get_value(step, varname, raw)
-    elif root == "step":
-        return _try_get_value(_step(ctx), varname, raw)
     elif root == "inputs":
         if varname in ctx.inputs:
             value = ctx.inputs[varname]

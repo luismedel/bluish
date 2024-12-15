@@ -4,6 +4,7 @@ from typing import cast
 import yaml
 
 import bluish.actions.base
+import bluish.nodes.environment
 import bluish.nodes.job
 import bluish.nodes.step
 import bluish.nodes.workflow
@@ -199,7 +200,6 @@ class RunExternal(bluish.actions.base.Action):
             workflow, step.get_inherited_attr("runs_on_host")
         ):
             workflow.set_attr("woking_dir", step.get_inherited_attr("working_dir"))
-            workflow.set_inputs(step.inputs)
 
             result = workflow.dispatch_job(job, no_deps=False)
             for k, v in workflow.outputs.items():
@@ -214,7 +214,8 @@ class RunExternal(bluish.actions.base.Action):
         with open(path, "rb") as f:
             contents = f.read()
         definition = WorkflowDefinition(**yaml.safe_load(contents))
-        workflow = bluish.nodes.workflow.Workflow(definition)
+        environment = bluish.nodes.environment.Environment(**{"with": step.attrs._with})
+        workflow = bluish.nodes.workflow.Workflow(environment, definition)
         workflow.yaml_root = os.path.dirname(path)
         return workflow
 

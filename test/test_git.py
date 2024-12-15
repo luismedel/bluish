@@ -13,7 +13,7 @@ def initialize_commands():
 
 
 def test_docker_public_checkout() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
   checkout:
     runs_on: docker://alpine:latest

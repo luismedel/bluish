@@ -30,8 +30,11 @@ class Action:
 
         step.sensitive_inputs.update(self.SENSITIVE_INPUTS)
 
+        # Were we log step.attrs._with instead of step.inputs because we
+        # only want to list the inputs that were passed explicitly to the
+        # step.
         log_dict(
-            step.inputs,
+            step.attrs._with,
             header="with",
             ctx=step,
             sensitive_keys=self.SENSITIVE_INPUTS,

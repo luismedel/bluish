@@ -17,7 +17,7 @@ def initialize_commands():
 def test_docker_build(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     create-docker:
         steps:
@@ -50,7 +50,7 @@ jobs:
 def test_docker_build_with_matrix(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     create-docker:
         matrix:

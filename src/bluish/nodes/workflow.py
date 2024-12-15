@@ -12,8 +12,12 @@ from bluish.logging import debug, error, info
 class Workflow(bluish.nodes.Node):
     NODE_TYPE = "workflow"
 
-    def __init__(self, definition: bluish.nodes.Definition) -> None:
-        super().__init__(None, definition)
+    def __init__(
+        self,
+        environment: "bluish.nodes.Node | None",
+        definition: bluish.nodes.Definition,
+    ) -> None:
+        super().__init__(environment, definition)
 
         self.yaml_root: str | None = None
         self.sys_env: dict[str, str | None] = {}
@@ -33,10 +37,13 @@ class Workflow(bluish.nodes.Node):
             v["id"] = k
             self.jobs[k] = bluish.nodes.job.Job(self, bluish.nodes.JobDefinition(**v))
 
+        if environment:
+            self._set_inputs(environment.inputs)
+
     def add_env(self, **kwargs: str | None) -> None:
         self.sys_env.update(kwargs)
 
-    def set_inputs(self, inputs: dict[str, str]) -> None:
+    def _set_inputs(self, inputs: dict[str, str]) -> None:
         def is_true(v: Any) -> bool:
             return v in ("true", "1", True)
 
@@ -68,6 +75,8 @@ class Workflow(bluish.nodes.Node):
     def dispatch(self) -> bluish.process.ProcessResult:
         self.status = bluish.core.ExecutionStatus.RUNNING
 
+        # Log inputs. By using self.inputs instead of self.attrs._with we
+        # ensure that we list the externally provided inputs too.
         bluish.nodes.log_dict(
             self.inputs,
             header="with",

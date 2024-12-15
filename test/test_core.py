@@ -1,7 +1,7 @@
 
 import logging
 from io import FileIO
-from test.utils import create_workflow
+from test.utils import create_environment, create_workflow
 
 import pytest
 from bluish.core import (
@@ -22,7 +22,7 @@ def initialize_commands():
 
 
 def test_multiple_jobs() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -41,7 +41,7 @@ jobs:
 
 
 def test_multiple_jobs_failed() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -63,7 +63,7 @@ jobs:
 def test_wf_matrix(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 matrix:
     os: [ubuntu, macos]
     version: ["18.04", "20.04"]
@@ -93,7 +93,7 @@ macos-20.04-blue
 def test_job_matrix(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     test_job:
         name: "Job 1"
@@ -122,7 +122,7 @@ macos-20.04-blue
 def test_compound_matrix(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 matrix:
     os: [ubuntu, macos]
     version: ["18.04", "20.04"]
@@ -151,7 +151,7 @@ macos-20.04-blue
 
 
 def test_depends_on() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -171,7 +171,7 @@ jobs:
 
 
 def test_depends_on_circular() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -195,7 +195,7 @@ jobs:
 
 
 def test_depends_on_failed() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -219,7 +219,7 @@ jobs:
 
 
 def test_depends_on_ignored() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     job1:
         name: "Job 1"
@@ -239,7 +239,7 @@ jobs:
 
 
 def test_conditions() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     true_var: true
     false_var: false
@@ -293,7 +293,7 @@ jobs:
 
 
 def test_working_directory() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 
 working_directory: /tmp
 
@@ -309,7 +309,7 @@ jobs:
 
 
 def test_working_directory_override() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 
 working_directory: /tmp
 
@@ -326,7 +326,7 @@ jobs:
 
 
 def test_default_run() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     hello_run:
         name: "Hello, World!"
@@ -339,7 +339,7 @@ jobs:
 
 
 def test_shell_run_bash() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     hello_sh:
         name: "Hello, World!"
@@ -353,7 +353,7 @@ jobs:
 
 
 def test_shell_run_python() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     hello_python:
         name: "Hello, World!"
@@ -369,7 +369,7 @@ jobs:
 
 
 def test_shell_override() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 shell: sh
 
 jobs:
@@ -389,7 +389,7 @@ jobs:
 
 
 def test_mandatory_attributes() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     mandatory_attributes:
         steps:
@@ -403,7 +403,7 @@ jobs:
 
 
 def test_mandatory_inputs() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     WORLD: "World!"
 
@@ -422,7 +422,11 @@ jobs:
 
 
 def test_workflow_inputs() -> None:
-    wf = create_workflow("""
+    env = create_environment({
+        "with": { "TEST_INPUT": "World" }
+    })
+
+    wf = create_workflow(env, """
 inputs:
     - name: TEST_INPUT
       required: true
@@ -433,30 +437,30 @@ jobs:
             - run: |
                 echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
 """)
-    wf.set_inputs({"TEST_INPUT": "World"})
     _ = wf.dispatch()
     assert wf.get_value("jobs.test.stdout") == "Hello, World!"
 
 
 def test_workflow_unexpected_inputs() -> None:
+    env = create_environment({
+        "with": { "UNEXPECTED_INPUT": "Unexpected" }
+    })
+
     try:
-        wf = create_workflow("""
+        _ = create_workflow(env, """
 jobs:
     test:
         steps:
             - run: |
                 echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
 """)
-        wf.set_inputs({
-            "UNEXPECTED_INPUT": "Unexpected"
-        })
         raise AssertionError("Unexpected input not detected")
     except ValueError as ex:
         assert str(ex) == "Unknown input parameter: UNEXPECTED_INPUT"
 
 
 def test_workflow_optional_inputs() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 inputs:
     - name: TEST_INPUT
       required: false
@@ -468,13 +472,12 @@ jobs:
             - run: |
                 echo "Hello, ${{ workflow.inputs.TEST_INPUT }}!"
 """)
-    wf.set_inputs({})
     _ = wf.dispatch()
     assert wf.get_value("jobs.test.stdout") == "Hello, World!"
 
 
 def test_cwd() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 working_directory: /tmp
 
 jobs:
@@ -488,7 +491,7 @@ jobs:
 
 
 def test_expansion() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     HELLO: "Hello"
     WORLD: "World!"
@@ -506,7 +509,7 @@ jobs:
 
 
 def test_expansion_with_ambiguity() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     test_result: 
     stdout: "No"
@@ -527,7 +530,7 @@ jobs:
 
 
 def test_expansion_with_no_ambiguity() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     test_result:
     stdout: "No"
@@ -546,7 +549,7 @@ jobs:
 
 
 def test_working_dir_expansion() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     PATH: "/tmp"
 
@@ -564,7 +567,7 @@ jobs:
 
 
 def test_values() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     VALUE: 1
 
@@ -589,7 +592,7 @@ jobs:
 
 
 def test_expressions() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     VALUE: 2
 
@@ -624,7 +627,7 @@ jobs:
 def test_secrets_are_redacted_in_log(caplog) -> None:
     caplog.set_level(logging.DEBUG)
     
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 secrets:
     my_secret: "hello"
 
@@ -647,7 +650,7 @@ jobs:
 
 
 def test_set() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     VALUE: 42
 
@@ -672,7 +675,7 @@ jobs:
 
 
 def test_env_overriding() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 var:
     HELLO: "Hello"
     WORLD: "World!"
@@ -707,7 +710,7 @@ jobs:
 def test_expand_template(temp_file: FileIO) -> None:
     filename = str(temp_file.name)
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 var:
     hero: "Don Quijote"
 
@@ -744,7 +747,7 @@ jobs:
 
 
 def test_capture() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     test_job:
         steps:
@@ -765,7 +768,7 @@ jobs:
 
 
 def test_pass_env() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 env:
     WORLD: "World!"
 
@@ -781,7 +784,7 @@ jobs:
 
 
 def test_runs_on_job() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     test_job:
         runs_on: docker://alpine:3.20.3
@@ -795,7 +798,7 @@ jobs:
 
 
 def test_runs_on_job_automount() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     test_job:
         runs_on:
@@ -816,7 +819,7 @@ def test_runs_on_job_no_automount(temp_file) -> None:
     temp_file.write(b"Hello, World!")
     temp_file.flush()
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     test_job:
         runs_on:
@@ -832,7 +835,7 @@ jobs:
 
 
 def test_runs_on_job_automount_fails_if_mounts() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     test_job:
         runs_on:
@@ -851,7 +854,7 @@ jobs:
 
 
 def test_runs_on_job_automount_fails_if_workdir() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     test_job:
         runs_on:
@@ -870,7 +873,7 @@ jobs:
 
     
 def test_runs_on_workflow() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 runs_on: docker://alpine:3.20.3
 
 jobs:
@@ -885,7 +888,7 @@ jobs:
 
 
 def test_runs_on_workflow_override_in_job() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 runs_on: docker://alpine:3.20.3
 
 jobs:
@@ -902,7 +905,7 @@ jobs:
 
 @pytest.mark.docker
 def test_docker_pass_env() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 env:
     WORLD: "World!"
 
@@ -920,7 +923,7 @@ jobs:
 
 @pytest.mark.docker
 def test_docker_run() -> None:
-    wf = create_workflow("""
+    wf = create_workflow(None, """
 jobs:
     docker_run:
         runs_on: docker://alpine:latest
@@ -940,7 +943,7 @@ def test_docker_file_upload(temp_file: FileIO) -> None:
     temp_file.write(b"Hello, World!")
     temp_file.flush()
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     file_upload:
         runs_on: docker://alpine:latest
@@ -963,7 +966,7 @@ def test_docker_file_download(temp_file: FileIO) -> None:
     temp_file.write(b"Hello, World!")
     temp_file.flush()
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     file_download:
         runs_on: docker://alpine:latest
@@ -989,7 +992,7 @@ def test_docker_file_download_failed(temp_file: FileIO) -> None:
     temp_file.write(b"Hello, World!")
     temp_file.flush()
 
-    wf = create_workflow(f"""
+    wf = create_workflow(None, f"""
 jobs:
     test_job:
         runs_on: docker://alpine:latest

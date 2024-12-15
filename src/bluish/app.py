@@ -1,12 +1,11 @@
 import contextlib
 import logging
 import os
-from io import StringIO
+from typing import Any, Iterable
 
 import click
 import yaml
 from dotenv import dotenv_values
-from flask import Flask, abort, jsonify, request
 from typing_extensions import Never
 
 from bluish.__main__ import PROJECT_VERSION
@@ -14,6 +13,7 @@ from bluish.core import (
     init_commands,
 )
 from bluish.nodes import WorkflowDefinition
+from bluish.nodes.environment import Environment
 from bluish.nodes.job import Job
 from bluish.nodes.workflow import Workflow
 
@@ -76,7 +76,20 @@ def locate_yaml(name: str) -> str | None:
     return None
 
 
-def workflow_from_file(file: str) -> Workflow:
+def create_environment(definition: dict[str, Any]) -> Environment:
+    """Creates an environment object."""
+
+    return Environment(
+        **{
+            "sys_env": definition.get(
+                "sys_env", {**os.environ, **dotenv_values(".env")}
+            ),
+            "with": definition.get("with", {}),
+        }
+    )
+
+
+def workflow_from_file(environment, file: str) -> Workflow:
     """Loads the workflow from a file."""
 
     yaml_contents: str = ""
@@ -89,13 +102,60 @@ def workflow_from_file(file: str) -> Workflow:
         fatal("No workflow file found.")
 
     definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    result = Workflow(definition)
+    result = Workflow(environment, definition)
     result.yaml_root = os.path.dirname(file)
 
     result.add_env(**os.environ)
     result.add_env(**dotenv_values(result.attrs.env_file or ".env"))
 
     return result
+
+
+def load_workflow(file: str, args: Iterable[str]) -> Workflow:
+    yaml_contents: str = ""
+    yaml_path = file or locate_yaml("")
+    if not yaml_path:
+        fatal("No workflow file found.")
+        return
+
+    logging.info(f"Loading workflow from {yaml_path}")
+    logging.info("")
+
+    with contextlib.suppress(FileNotFoundError):
+        with open(yaml_path, "r") as yaml_file:
+            yaml_contents = yaml_file.read()
+
+    if not yaml_contents:
+        fatal("No workflow file found.")
+        return
+
+    environment = create_environment(
+        {"with": {k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)}}
+    )
+    definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
+    wf = Workflow(environment, definition)
+    wf.yaml_root = os.path.dirname(yaml_path)
+    return wf
+
+
+def list_workflow_jobs(wf: Workflow) -> None:
+    if not wf.jobs:
+        fatal("No jobs found in workflow file.")
+
+    items = sorted(
+        (
+            (id, job.attrs.name or "", job.attrs.depends_on)
+            for id, job in wf.jobs.items()
+        ),
+        key=lambda x: x[0],
+    )
+    id_len = max(len(id) for id, _, _ in items)
+
+    click.secho(f"{'ID':<{id_len}}  NAME", fg="yellow", bold=True)
+    for id, name, depends_on in items:
+        if depends_on:
+            name = f"{name} (depends on: {', '.join(depends_on)})"
+        click.echo(f"{id:<{id_len}}  {name}")
 
 
 @click.command("blu")
@@ -130,8 +190,13 @@ def blu_cli(
     logging.info(f"Loading workflow from {yaml_path}")
     logging.info("")
 
-    wf = workflow_from_file(yaml_path)
-    wf.set_inputs({k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)})
+    environment = create_environment(
+        {"with": {k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)}}
+    )
+    wf = workflow_from_file(environment, yaml_path)
+    if not job_id:
+        list_workflow_jobs(wf)
+        return
 
     job: Job | None = wf.jobs.get(job_id)
     if not job:
@@ -174,41 +239,19 @@ def bluish_cli(
     init_logging(log_level)
     init_commands()
 
-    yaml_contents: str = ""
     yaml_path = file or locate_yaml("")
     if not yaml_path:
         fatal("No workflow file found.")
         return
 
-    logging.info(f"Loading workflow from {yaml_path}")
-    logging.info("")
-
-    with contextlib.suppress(FileNotFoundError):
-        with open(yaml_path, "r") as yaml_file:
-            yaml_contents = yaml_file.read()
-
-    if not yaml_contents:
-        fatal("No workflow file found.")
-        return
-
-    definition = WorkflowDefinition(**yaml.safe_load(yaml_contents))
-    wf = Workflow(definition)
-    wf.yaml_root = os.path.dirname(yaml_path)
-    ctx.obj = wf
+    ctx.obj = yaml_path
 
 
 @bluish_cli.command("list")
 @click.pass_obj
-def list_jobs(wf: Workflow) -> None:
-    if not wf.jobs:
-        fatal("No jobs found in workflow file.")
-
-    items = tuple((id, job.attrs.name or "") for id, job in wf.jobs.items())
-    id_len = max(len(id) for id, _ in items)
-
-    click.secho(f"{'ID':<{id_len}}  NAME", fg="yellow", bold=True)
-    for id, name in items:
-        click.echo(f"{id:<{id_len}}  {name}")
+def list_jobs(yaml_path: str) -> None:
+    wf = load_workflow(yaml_path, [])
+    list_workflow_jobs(wf)
 
 
 @bluish_cli.command("run")
@@ -216,8 +259,8 @@ def list_jobs(wf: Workflow) -> None:
 @click.option("--no-deps", is_flag=True, help="Don't run job dependencies")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
-def run_job(wf: Workflow, job_id: str, no_deps: bool, args: tuple[str]) -> None:
-    wf.set_inputs({k: v for k, v in (arg.split("=", maxsplit=1) for arg in args)})
+def run_job(yaml_path: str, job_id: str, no_deps: bool, args: tuple[str]) -> None:
+    wf = load_workflow(yaml_path, args)
     job = wf.jobs.get(job_id)
     if not job:
         fatal(f"Job '{job_id}' not found.")
@@ -237,54 +280,6 @@ def run_job(wf: Workflow, job_id: str, no_deps: bool, args: tuple[str]) -> None:
             print(trace)
 
         fatal(str(e))
-
-
-@bluish_cli.command("serve")
-@click.argument(
-    "workflow_path",
-    type=click.Path(file_okay=False, dir_okay=True, exists=True),
-    required=True,
-)
-@click.option("--host", type=str, default="localhost", help="Host")
-@click.option("--port", type=int, default=5000, help="Port")
-def serve(workflow_path: str, host: str, port: int) -> None:
-    app = Flask(__name__)
-
-    @app.route("/")
-    def serve_index():
-        return abort(404)
-
-    @app.route("/<file>/<job_id>")
-    def dispatch_job(file: str, job_id: str):
-        file = f"{file}.yaml"
-        if file not in os.listdir(workflow_path):
-            return abort(404)
-
-        wf = workflow_from_file(f"{workflow_path}/{file}")
-        job = wf.jobs.get(job_id)
-        if not job:
-            return abort(404)
-
-        log_level_name = request.args.get("log_level", "INFO")
-        log_level = getattr(logging, log_level_name.upper(), logging.INFO)
-
-        log_stream = StringIO()
-        logging.basicConfig(
-            stream=log_stream, level=log_level, format="%(message)s", force=True
-        )
-
-        result = wf.dispatch_job(job, False)
-
-        return jsonify(
-            {
-                "run": result is not None,
-                "stdout": log_stream.getvalue().splitlines(),
-                "stderr": result.stderr if result else None,
-                "returncode": result.returncode if result else None,
-            }
-        )
-
-    app.run(host=host, port=port)
 
 
 if __name__ == "__main__":
