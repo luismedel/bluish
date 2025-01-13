@@ -4,7 +4,7 @@ inputs:
     default: "3.12"
 
 var:
-  project_version: "0.9.11"
+  project_version: "0.9.12"
 
 jobs:
   publish:
