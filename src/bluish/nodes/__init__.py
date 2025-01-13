@@ -28,7 +28,6 @@ def log_dict(
     if dict_ is None or not dict_:
         return
     info(f"{header}:")
-    print(dict_.items())
     for k, v in dict_.items():
         if ctx:
             v = ctx.expand_expr(v)
