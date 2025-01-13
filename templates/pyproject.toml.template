@@ -17,6 +17,7 @@ dependencies = [
   "click==8.1.7",
   "flask==3.0.3",
   "lark==1.2.2",
+  "typing-extensions==4.12.2"
 ]
 classifiers = [
     "Intended Audience :: Developers",
