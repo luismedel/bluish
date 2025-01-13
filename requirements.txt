@@ -3,3 +3,4 @@ pyyaml==6.0.2
 lark==1.2.2
 click==8.1.7
 flask==3.0.3
+typing-extensions==4.12.2
