@@ -68,9 +68,9 @@ def _get_docker_pid(host: str, docker_args: dict[str, Any] | None) -> str:
     opts: str = ""
 
     if docker_args.get("automount", False):
-        if "-v" in docker_args or "--volume" in docker_args:
+        if "volumes" in docker_args:
             raise ValueError("To use custom volumes, set automount to false")
-        if "-w" in docker_args or "--workdir" in docker_args:
+        if "workdir" in docker_args:
             raise ValueError("To use custom workdir, set automount to false")
 
         opts += " -v .:/mnt"
@@ -79,7 +79,20 @@ def _get_docker_pid(host: str, docker_args: dict[str, Any] | None) -> str:
     for k, v in docker_args.items():
         if k == "automount":
             continue
-        opts += f" {k}" if isinstance(v, bool) else f" {k} {v}"
+        if k == "volumes":
+            for volume in v:
+                opts += f" -v {volume}"
+        elif k == "workdir":
+            opts += f" -w {v}"
+        elif k == "env":
+            for env_var in v:
+                opts += f" -e {env_var}"
+        elif k == "ports":
+            for port in v:
+                opts += f" -p {port}"
+        else:
+            k = f"--{k}" if len(k) > 1 else f"-{k}"
+            opts += f" {k}" if isinstance(v, bool) else f" {k} {v}"
 
     command = f"docker run {opts} --detach {host} sleep infinity"
     debug(f" > {command}")
