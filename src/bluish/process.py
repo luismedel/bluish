@@ -44,6 +44,13 @@ class ProcessResult(subprocess.CompletedProcess[str]):
 ProcessResult.EMPTY = ProcessResult("", "", 0)
 
 
+DOCKER_LIST_ARGS = {
+    "volumes": "-v",
+    "env": "-e",
+    "ports": "-p",
+}
+
+
 def _escape_command(command: str) -> str:
     return command.replace("\\", r"\\\\").replace("$", "\\$")
 
@@ -68,28 +75,23 @@ def _get_docker_pid(host: str, docker_args: dict[str, Any] | None) -> str:
     opts: str = ""
 
     if docker_args.get("automount", False):
-        if "mounts" in docker_args:
-            raise ValueError("To use custom mounts, set automount to false")
+        if "volumes" in docker_args:
+            raise ValueError("To use custom volume mounts, set automount to false")
         if "workdir" in docker_args:
             raise ValueError("To use custom workdir, set automount to false")
 
-        opts += " -m .:/mnt"
+        opts += " -v .:/mnt"
         opts += " -w /mnt"
 
     for k, v in docker_args.items():
-        if k == "automount":
+        if k in DOCKER_LIST_ARGS:
+            argname = DOCKER_LIST_ARGS[k]
+            for item in v:
+                opts += f' {argname} "{item}"'
+        elif k == "automount":
             continue
-        if k == "mounts":
-            for volume in v:
-                opts += f' -m "{volume}"'
         elif k == "workdir":
             opts += f' -w "{v}"'
-        elif k == "env":
-            for env_var in v:
-                opts += f' -e "{env_var}"'
-        elif k == "ports":
-            for port in v:
-                opts += f' -p "{port}"'
         else:
             k = f"--{k}" if len(k) > 1 else f"-{k}"
             opts += f" {k}" if isinstance(v, bool) else f' {k} "{v}"'
