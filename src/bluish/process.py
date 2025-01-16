@@ -169,17 +169,21 @@ def prepare_host_for(
 
     inherited = current_host or node.get_inherited_attr("runs_on_host")
     if node.attrs.runs_on:
-        runs_on_host = prepare_host(node.expand_expr(node.attrs.runs_on))
-        node.set_attr("runs_on_host", runs_on_host)
-        yield runs_on_host
-        node.clear_attr("runs_on_host")
-        if runs_on_host is not inherited:
-            runs_on_host.clear()
-            cleanup_host(runs_on_host)
+        try:
+            runs_on_host = prepare_host(node.expand_expr(node.attrs.runs_on))
+            node.set_attr("runs_on_host", runs_on_host)
+            yield runs_on_host
+        finally:
+            node.clear_attr("runs_on_host")
+            if runs_on_host is not inherited:
+                runs_on_host.clear()
+                cleanup_host(runs_on_host)
     else:
-        node.set_attr("runs_on_host", inherited)
-        yield inherited
-        node.clear_attr("runs_on_host")
+        try:
+            node.set_attr("runs_on_host", inherited)
+            yield inherited
+        finally:
+            node.clear_attr("runs_on_host")
 
 
 def capture_subprocess_output(
